@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  file_server:
+    build:
+        context: .
+    ports:
+      - "1234:1234"
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+          cpus: "0.25"
+      replicas: 1
+      mode: replicated
+    volumes:
+      - ./.fileserver/data:/tmp/
+
+  # This container is for convenience and does not count against your resource cap.
+  # Comment this out if you want to manually run load tests from the `load_test` directory.
+  load_tester:
+    build:
+      context: load_test/
+    environment:
+      - FILE_SERVER_ADDR=http://file_server:1234
+      - TERM=xterm-256color
+    volumes:
+      - ./fileserver/data:/tmp/
+
+
