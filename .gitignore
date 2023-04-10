@@ -15,3 +15,6 @@
 # vendor/
 
 .idea/
+
+## File volume
+.file-server/files/*

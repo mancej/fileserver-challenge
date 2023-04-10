@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	maxConnections        = 50
+	maxConnections        = 25
 	baseLatencyPerRequest = 750 // # ms added for all requests
+	port                  = 1234
 )
 
 func NewFileServer() *FileServer {
@@ -30,10 +31,10 @@ type FileServer struct {
 func (fs *FileServer) Run() error {
 	router := httprouter.New()
 	router.GET("/api/fileserver/:filename", fs.HandleGet)
-	router.POST("/api/fileserver/:filename", fs.HandlePost)
+	router.PUT("/api/fileserver/:filename", fs.HandlePut)
 	router.DELETE("/api/fileserver/:filename", fs.HandleDelete)
 
-	return http.ListenAndServe(":1234", router)
+	return http.ListenAndServe(fmt.Sprintf(":%d", port), router)
 }
 
 func (fs *FileServer) SimulateLatency() {
@@ -110,7 +111,7 @@ func (fs *FileServer) HandleGet(response http.ResponseWriter, request *http.Requ
 	return
 }
 
-func (fs *FileServer) HandlePost(response http.ResponseWriter, request *http.Request, params httprouter.Params) {
+func (fs *FileServer) HandlePut(response http.ResponseWriter, request *http.Request, params httprouter.Params) {
 	// Throttle if > maxConnections
 	if !fs.CanTakeConnection() {
 		response.WriteHeader(http.StatusTooManyRequests)
@@ -199,7 +200,7 @@ func (fs *FileServer) HandleDelete(response http.ResponseWriter, request *http.R
 	}
 
 	// Write successful response
-	response.WriteHeader(http.StatusCreated)
+	response.WriteHeader(http.StatusOK)
 }
 
 func (fs *FileServer) CanTakeConnection() bool {
