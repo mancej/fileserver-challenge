@@ -50,7 +50,7 @@ will be displayed. The below metrics will aggregated:
 * HTTP 2XX’s
 * HTTP 5XX’s
 * Total throughput (requests / sec)
-* # of times invalid data was returned (i.e, I wrote X last, but was returned Y as a value)
+* Number of times invalid data was returned (i.e, I wrote X last, but was returned Y as a value)
 * ??
 
 **What you’ll be given:**
