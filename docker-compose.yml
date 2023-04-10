@@ -16,6 +16,9 @@ services:
     volumes:
       - ./.fileserver/data:/tmp/
 
+  # Add more container definitions below
+
+  # LOAD TESTER:
   # This container is for convenience and does not count against your resource cap.
   # Comment this out if you want to manually run load tests from the `load_test` directory.
   load_tester:
@@ -23,8 +26,11 @@ services:
       context: load_test/
     environment:
       - FILE_SERVER_ADDR=http://file_server:1234
+      - REQUESTS_PER_SECOND=1000
+      - MAX_FILE_COUNT=500
+      - MAX_FILE_SIZE=1024
       - TERM=xterm-256color
     volumes:
-      - ./fileserver/data:/tmp/
+      - ./.fileserver/data:/tmp/  # Error logs are written to this data dir under load_test.log
 
 

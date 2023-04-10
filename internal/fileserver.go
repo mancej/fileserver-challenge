@@ -45,6 +45,7 @@ func (fs *FileServer) HandleGet(response http.ResponseWriter, request *http.Requ
 	// Throttle if > maxConnections
 	if !fs.CanTakeConnection() {
 		response.WriteHeader(http.StatusTooManyRequests)
+		fs.WriteResponseBody(response, "Too many requests. Slow down.")
 		return
 	}
 
@@ -59,17 +60,23 @@ func (fs *FileServer) HandleGet(response http.ResponseWriter, request *http.Requ
 
 	if fileName == "" {
 		response.WriteHeader(http.StatusBadRequest)
+		fs.WriteResponseBody(response, "File name is empty.")
 		return
 	}
 
-	fs.fileLock.RLock()
+	fs.fileLock.Lock()
 	_, hasFile := fs.knownFiles[fileName]
 	if !hasFile {
-		response.WriteHeader(http.StatusNotFound)
-		fs.fileLock.RUnlock()
-		return
+		// If file not found in known file cache, check fs directly in case file was written by different process.
+		_, err := os.Stat(filePath)
+		if err != nil {
+			response.WriteHeader(http.StatusNotFound)
+			fs.WriteResponseBody(response, "File not found.")
+			fs.fileLock.Unlock()
+			return
+		}
 	}
-	fs.fileLock.RUnlock()
+	fs.fileLock.Unlock()
 
 	// Read file from FS
 	file, err := os.Open(filePath)
@@ -84,6 +91,7 @@ func (fs *FileServer) HandleGet(response http.ResponseWriter, request *http.Requ
 	if err != nil {
 		log.Errorf("Failed to read file stat for file: %s. Error: %+v", filePath, err)
 		response.WriteHeader(http.StatusInternalServerError)
+		fs.WriteResponseBody(response, err.Error())
 		return
 	}
 	numBytes := stat.Size()
@@ -96,6 +104,7 @@ func (fs *FileServer) HandleGet(response http.ResponseWriter, request *http.Requ
 	if err != nil {
 		log.Errorf("Failed to read file bytes for file: %s. Error: %+v", filePath, err)
 		response.WriteHeader(http.StatusInternalServerError)
+		fs.WriteResponseBody(response, err.Error())
 		return
 	}
 
@@ -103,11 +112,10 @@ func (fs *FileServer) HandleGet(response http.ResponseWriter, request *http.Requ
 	if numBytes != written {
 		log.Errorf("Invalid number of bytes written to response. Expected %d, got %d", numBytes, written)
 		response.WriteHeader(http.StatusInternalServerError)
+		fs.WriteResponseBody(response, "Data write corruption. Please retry")
 		return
 	}
 
-	// Write successful response
-	response.WriteHeader(http.StatusOK)
 	return
 }
 
@@ -115,6 +123,7 @@ func (fs *FileServer) HandlePut(response http.ResponseWriter, request *http.Requ
 	// Throttle if > maxConnections
 	if !fs.CanTakeConnection() {
 		response.WriteHeader(http.StatusTooManyRequests)
+		fs.WriteResponseBody(response, "Too many requests. Slow down.")
 		return
 	}
 
@@ -131,18 +140,20 @@ func (fs *FileServer) HandlePut(response http.ResponseWriter, request *http.Requ
 
 	if fileName == "" {
 		response.WriteHeader(http.StatusBadRequest)
+		fs.WriteResponseBody(response, "No file name provided")
 		return
 	}
 
 	fs.fileLock.Lock()
+	defer fs.fileLock.Unlock()
 	fs.knownFiles[fileName] = true
-	fs.fileLock.Unlock()
 
 	// Open file for writing
 	file, err := os.Create(filePath)
 	if err != nil {
 		log.Errorf("Failed to create file: %s. Error: %+v", filePath, err)
 		response.WriteHeader(http.StatusInternalServerError)
+		fs.WriteResponseBody(response, err.Error())
 		return
 	}
 
@@ -151,6 +162,7 @@ func (fs *FileServer) HandlePut(response http.ResponseWriter, request *http.Requ
 	if err != nil {
 		log.Errorf("Failed to read file bytes for file: %s. Error: %+v", filePath, err)
 		response.WriteHeader(http.StatusInternalServerError)
+		fs.WriteResponseBody(response, err.Error())
 		return
 	}
 
@@ -158,6 +170,7 @@ func (fs *FileServer) HandlePut(response http.ResponseWriter, request *http.Requ
 	if request.ContentLength != written {
 		log.Errorf("Invalid number of bytes written to response. Expected %d, got %d", request.ContentLength, written)
 		response.WriteHeader(http.StatusInternalServerError)
+		fs.WriteResponseBody(response, "Write corruption, please retry.")
 		return
 	}
 
@@ -170,6 +183,7 @@ func (fs *FileServer) HandleDelete(response http.ResponseWriter, request *http.R
 	// Throttle if > maxConnections
 	if !fs.CanTakeConnection() {
 		response.WriteHeader(http.StatusTooManyRequests)
+		fs.WriteResponseBody(response, "Too many requests. Slow down.")
 		return
 	}
 
@@ -184,18 +198,21 @@ func (fs *FileServer) HandleDelete(response http.ResponseWriter, request *http.R
 
 	if fileName == "" {
 		response.WriteHeader(http.StatusBadRequest)
+		fs.WriteResponseBody(response, "No file name specified.")
 		return
 	}
 
 	fs.fileLock.Lock()
+	defer fs.fileLock.Unlock()
+
 	delete(fs.knownFiles, fileName)
-	fs.fileLock.Unlock()
 
 	// Open file for writing
 	err := os.Remove(filePath)
 	if err != nil {
 		log.Errorf("Failed to delete file: %s. Error: %+v", filePath, err)
 		response.WriteHeader(http.StatusInternalServerError)
+		fs.WriteResponseBody(response, err.Error())
 		return
 	}
 
@@ -216,8 +233,16 @@ func (fs *FileServer) IncrementConnection() {
 	fs.connections = fs.connections + 1
 	fs.connLock.Unlock()
 }
+
 func (fs *FileServer) DecrementConnection() {
 	fs.connLock.Lock()
 	fs.connections = fs.connections - 1
 	fs.connLock.Unlock()
+}
+
+func (fs *FileServer) WriteResponseBody(response http.ResponseWriter, message string) {
+	_, err := response.Write([]byte(message))
+	if err != nil {
+		log.Errorf("Failed to write response body: %+v", err)
+	}
 }

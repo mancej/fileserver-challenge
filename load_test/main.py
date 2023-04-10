@@ -4,48 +4,59 @@ import random
 import string
 import threading
 import time
-from typing import List
+from typing import List, Set
 
 from file_server_client import FileServerClient
 from rate_limiter import RateLimiter
 from results import RequestResult, ResultStats
 
 root = logging.getLogger()
-root.setLevel(logging.INFO)  # Set to logging.DEBUG for much more infomation
+root.setLevel(os.getenv("LOG_LEVEL", default=logging.INFO))  # Set to logging.DEBUG for much more information
+fileHandler = logging.FileHandler("/tmp/load_test.log")
+fileHandler.setLevel(logging.INFO)
+root.addHandler(fileHandler)
 
 # Configure the load test here
-FILE_SERVER_ADDR = os.getenv("FILE_SERVER_ADDR", default="http://localhost:1234")
-FILE_SERVER_PREFIX = "api/fileserver"
-MAX_NUMBER_OF_FILES = 500
-MAX_FILE_SIZE_BYTES = 1024
-REQUESTS_PER_SECOND: int = 100  # Max requests per second that the load test will run.
+FILE_SERVER_ADDR: str = os.getenv("FILE_SERVER_ADDR", default="http://localhost:1234")
+FILE_SERVER_PREFIX: str = "api/fileserver"
+MAX_NUMBER_OF_FILES: int = int(os.getenv("MAX_FILE_COUNT", default=50))
+MAX_FILE_SIZE_BYTES: int = int(os.getenv("MAX_FILE_SIZE", default=1024))
+REQUESTS_PER_SECOND: int = int(
+    os.getenv("REQUESTS_PER_SECOND", default=25))  # Max requests per second that the load test will run.
 
 # Globals
 CLIENT_ID = "fileserver_load_tester"
-NUMBER_OF_FILES = 0
-TRACKED_FILES: List[str] = []
 
-# Singeltons
-RESULT_STATS: ResultStats = ResultStats()
-KEEP_RUNNING = True
+# Global Singeltons
+RESULT_STATS: ResultStats = ResultStats(REQUESTS_PER_SECOND, MAX_NUMBER_OF_FILES, MAX_FILE_SIZE_BYTES)
 RATE_LIMITER = RateLimiter(throughput_per_second=REQUESTS_PER_SECOND, burst_balance_maximum=0,
                            burst_balance_reload_interval=0)
 FILE_SERVER_CLIENT = FileServerClient(FILE_SERVER_ADDR, FILE_SERVER_PREFIX, MAX_FILE_SIZE_BYTES)
 
+KEEP_RUNNING = True
+
+
 def perform_random_fileserver_action() -> RequestResult:
     # As NUMBER_OF_FILES approaches MAX_NUMBER_OF_FILES, reduce likelihood of creating new files
-    create_new_file = random.randint(0, MAX_NUMBER_OF_FILES) > NUMBER_OF_FILES
-    file_name = random.choice(TRACKED_FILES) if len(TRACKED_FILES) > 0 else ""
+    create_new_file = random.randint(0, MAX_NUMBER_OF_FILES) > FILE_SERVER_CLIENT.tracked_count()
+    file_name = FILE_SERVER_CLIENT.get_random_not_in_process_file()
 
-    # Selecdt a random file operation to run
-    funcs = [FILE_SERVER_CLIENT.put_file, FILE_SERVER_CLIENT.get_file, FILE_SERVER_CLIENT.delete_file]
+    # Select a random file operation to run, make get more common than delete, so we add it multiple times here
+    funcs = [FILE_SERVER_CLIENT.get_file, FILE_SERVER_CLIENT.get_file, FILE_SERVER_CLIENT.get_file,
+             FILE_SERVER_CLIENT.delete_file, FILE_SERVER_CLIENT.put_file]
     to_execute = random.choice(funcs)
 
     if create_new_file or not file_name:
-        file_name = ''.join(random.choices(string.ascii_letters, k=12))
-        to_execute = FILE_SERVER_CLIENT.put_file
+        if create_new_file and FILE_SERVER_CLIENT.tracked_count() < MAX_NUMBER_OF_FILES:
+            logging.debug(f"Got number of files: {FILE_SERVER_CLIENT.tracked_count()}, creating new file.")
+            file_name = ''.join(random.choices(string.ascii_letters, k=12))
 
-    return to_execute(file_name=file_name)
+        to_execute = FILE_SERVER_CLIENT.put_file
+    try:
+        return to_execute(file_name=file_name)
+    except Exception as e:
+        logging.exception(e)
+        RESULT_STATS.other_errors.append(f"{e}")
 
 
 def run_load_test():
@@ -57,16 +68,19 @@ def run_load_test():
                 RESULT_STATS.merge(result)
 
             # logging.info(rate_limiter.get_clients())
-            time.sleep(.1)
-            RATE_LIMITER.log_stats()
+            time.sleep(.01)
     except Exception as e:
         KEEP_RUNNING = False
+        RESULT_STATS.other_errors.append(f"{e}")
         logging.error(f"IRRECOVERABLE ERROR: Got unexpected exception: {e}. EXITING.")
         logging.fatal(e)
 
 
-NUM_WORKERS = int(REQUESTS_PER_SECOND / 3) + 1
+NUM_WORKERS = REQUESTS_PER_SECOND
 threads = []
+
+logging.info(f"Starting load test attempting {REQUESTS_PER_SECOND} target throughput.")
+logging.info(f"Spawning {NUM_WORKERS} worker threads.")
 
 for i in range(0, NUM_WORKERS):
     logging.debug(f"Starting thread: {i}")
@@ -82,5 +96,10 @@ try:
 
 except KeyboardInterrupt:
     KEEP_RUNNING = False
+    logging.info("\n\n Error dump: \n")
 
+    for err in RESULT_STATS.http_errors:
+        logging.info(f"HTTP error from FS: {err}")
 
+    for err in RESULT_STATS.other_errors:
+        logging.info(f"Other err:{err}")

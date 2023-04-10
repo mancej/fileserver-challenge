@@ -17,4 +17,4 @@
 .idea/
 
 ## File volume
-.file-server/files/*
+.file-server/data/
