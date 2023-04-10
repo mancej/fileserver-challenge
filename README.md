@@ -18,7 +18,7 @@ available to individual components, you may not exceed the limits set by the rul
 
 **Here are the aggregate limits of your application:**
 
-1. The file server cannot maintain more than 50 total connections at any point in time.
+1. The file server cannot maintain more than 25 total connections at any point in time.
 2. All services have a hard aggregate limit of 2CPU cores
 3. All services have a hard aggregate limit of 4GB Memory
 4. All services have a hard aggregate limit of 500 I/O operations per second (IOPS).
