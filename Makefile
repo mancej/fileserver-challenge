@@ -15,11 +15,11 @@ start:  ## Start docker stack
 .PHONY: start-clean
 start-clean: clean start ## Stop, clean, rebuild, and start docker stack
 
-.PHONY: start-clean-logs
-start-clean-logs: clean start logs  ## Stop, clean, rebuild, start docker stack, and tail load test logs
+.PHONY: start-clean-tail
+start-clean-tail: clean start tail  ## Stop, clean, rebuild, start docker stack, and tail load test logs
 
-.PHONY: start-logs
-start-logs: start logs  ## Stop, restart docker stack, and tail load test logs
+.PHONY: start-tail
+start-tail: start tail  ## Stop, restart docker stack, and tail load test logs
 
 .PHONY: clean
 clean: ## Stop & clean docker stack
@@ -33,8 +33,8 @@ stop:  ## Stop docker stack
 show-containers: ## Show running container information
 	docker ps
 
-.PHONY: logs
-logs:  ## Live tail logs of load test script
+.PHONY: tail
+tail:  ## Live tail logs of load test script
 	docker logs -f fileserver-challenge-load_tester-1
 
 .PHONY: stats

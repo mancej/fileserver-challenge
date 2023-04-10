@@ -52,10 +52,10 @@ class ResultStats:
         logging.info(f"Total requests: {self.total_requests}")
         logging.info(f"Total success: {self.num_success}")
         logging.info(f"Attempted Throughput: {throughput} requests/sec")
-        logging.info(f"Successful Throughput: {success_throughput} requests/sec   [Target: 1000+ req/s]")
-        logging.info(f"Total test failures: {self.num_failure}                    [Target: 0]")
-        logging.info(f"Total 5XX errors: {self.num_500s}                          [Target: 0]")
-        logging.info(f"Total throttled requests: {self.num_throttled}.            [Target: 0]")
+        logging.info(f"Successful Throughput: {success_throughput} requests/sec {self.calc_space(success_throughput)} [Target: 1000+ req/s]")
+        logging.info(f"Total test failures: {self.num_failure}                {self.calc_space(self.num_failure)} [Target: 0]")
+        logging.info(f"Total 5XX errors: {self.num_500s}                   {self.calc_space(self.num_500s)} [Target: 0]")
+        logging.info(f"Total throttled requests: {self.num_throttled}.          {self.calc_space(self.num_throttled)} [Target: 0]")
         logging.info("")
         for err in self.http_errors[-5:]:
             logging.info(f"Error received from fileserver: {err}")
@@ -85,3 +85,11 @@ class ResultStats:
 
         if result.was_throttled():
             self.num_throttled = self.num_throttled + 1
+
+    def calc_space(self, counter_balance: any, target_space=7) -> str:
+        response = ""
+        target_spacing = target_space - len(str(counter_balance))
+        for i in range(0, target_spacing):
+            response = response + " "
+
+        return response
