@@ -14,14 +14,15 @@ In this challenge you’ll be presented with a backend “file server” that st
 Your team does not maintain this application, so you do not have access to update its code. Instead, you must improve its 
 performance by writing custom middleware, or by fine-tuning the surrounding system to maximize total service throughput. 
 Like all production systems, this data-store has limited resources, so while you may be able to tweak how many resources are 
-available to individual components, you may not exceed the limits set by the rules of this challenge.
+available to individual components, you may not exceed the limits set by the rules of this challenge. You may run more than one
+file server if desired. 
 
 **Here are the aggregate limits of your application:**
 
 1. The file server cannot maintain more than 25 total connections at any point in time.
 2. All services have a hard aggregate limit of 2CPU cores
 3. All services have a hard aggregate limit of 4GB Memory
-4. All services have a hard aggregate limit of 500 I/O operations per second (IOPS).
+4. You may run more than one file server, but you may not run more than 4
 
 First, you must write a (at least one) middleware application that will serve file data to-and-from the backend file server(s). You may write your application middleware in **any language**, but **do not over index on language, as it is far less important to performance than you might expect. **
 
@@ -49,7 +50,8 @@ will be displayed. The below metrics will aggregated:
 
 * HTTP 2XX’s
 * HTTP 5XX’s
-* Total throughput (requests / sec)
+* Average successful throughput (requests / sec)
+* Maximum achieved successful throughput
 * Number of times invalid data was returned (i.e, I wrote X last, but was returned Y as a value)
 * ??
 

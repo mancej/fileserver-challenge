@@ -5,14 +5,13 @@ services:
     build:
         context: .
     ports:
-      - "1234:1234"
+      - ":1234"
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 512M
           cpus: "0.25"
       replicas: 1
-      mode: replicated
     volumes:
       - ./.fileserver/data:/tmp/
 
@@ -26,9 +25,9 @@ services:
       context: load_test/
     environment:
       - FILE_SERVER_ADDR=http://file_server:1234
-      - REQUESTS_PER_SECOND=1000
-      - MAX_FILE_COUNT=500
-      - MAX_FILE_SIZE=1024
+      - REQUESTS_PER_SECOND=50
+      - MAX_FILE_COUNT=100      # Recommend 2x REQUESTS_PER_SECOND
+      - MAX_FILE_SIZE=1024      # 1KB, but could be set to ANYTHING in live tests
       - TERM=xterm-256color
     volumes:
       - ./.fileserver/data:/tmp/  # Error logs are written to this data dir under load_test.log

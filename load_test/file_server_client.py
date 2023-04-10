@@ -39,13 +39,12 @@ class FileServerClient:
             response = requests.put(f"{self.address}/{self.path_prefix}/{file_name}", data=file_bytes)
             if 200 <= response.status_code < 300:
                 self._tracked_files.add(file_name)
-        except requests.exceptions.Timeout as e:
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             self._in_process.remove(file_name)
-            logging.error(e)
-            return RequestResult(InvalidResponse(status_code=429, text=f"Server overloaded, request timeout: {e}"))
+            return RequestResult(InvalidResponse(status_code=503, text=f"Server overloaded, request timeout or failed "
+                                                                       f"connection: {e}"))
         except requests.exceptions.RequestException as e:
             self._in_process.remove(file_name)
-            logging.error(e)
             return RequestResult(InvalidResponse(status_code=500, text=f"Unexpected request error: {e}"))
 
         self._in_process.remove(file_name)
@@ -58,13 +57,12 @@ class FileServerClient:
         logging.debug(f"GETTING file: {file_name}")
         try:
             response = requests.get(f"{self.address}/{self.path_prefix}/{file_name}")
-        except requests.exceptions.Timeout as e:
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             self._in_process.remove(file_name)
-            logging.error(e)
-            return RequestResult(InvalidResponse(status_code=429, text=f"Server overloaded, request timeout: {e}"))
+            return RequestResult(InvalidResponse(status_code=503, text=f"Server overloaded, request timeout or failed "
+                                                                       f"connection: {e}"))
         except requests.exceptions.RequestException as e:
             self._in_process.remove(file_name)
-            logging.error(e)
             return RequestResult(InvalidResponse(status_code=500, text=f"Unexpected request error: {e}"))
 
         self._in_process.remove(file_name)
@@ -79,11 +77,9 @@ class FileServerClient:
             if 200 <= response.status_code < 300:
                 self._tracked_files.remove(file_name)
         except requests.exceptions.Timeout as e:
-            logging.error(e)
             self._in_process.remove(file_name)
-            return RequestResult(InvalidResponse(status_code=429, text=f"Server overloaded, request timeout: {e}"))
+            return RequestResult(InvalidResponse(status_code=503, text=f"Server overloaded, request timeout: {e}"))
         except requests.exceptions.RequestException as e:
-            logging.error(e)
             self._in_process.remove(file_name)
             return RequestResult(InvalidResponse(status_code=500, text=f"Unexpected request error: {e}"))
 

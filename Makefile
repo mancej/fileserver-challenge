@@ -8,10 +8,18 @@ help:  ## Display this help.
 ##@ Commands
 .PHONY: start
 start:  ## Start docker stack
+	mkdir -p .fileserver/data && rm -rf .fileserver/data/*
+	docker-compose stop
 	docker-compose up -d --remove-orphans
 
 .PHONY: start-clean
 start-clean: clean start ## Stop, clean, rebuild, and start docker stack
+
+.PHONY: start-clean-logs
+start-clean-logs: clean start logs  ## Stop, clean, rebuild, start docker stack, and tail load test logs
+
+.PHONY: start-logs
+start-logs: start logs  ## Stop, restart docker stack, and tail load test logs
 
 .PHONY: clean
 clean: ## Stop & clean docker stack
