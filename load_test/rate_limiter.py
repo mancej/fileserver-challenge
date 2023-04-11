@@ -2,12 +2,11 @@
 # Only rate limit after a burst threshold is exceeded )
 
 import sys
+import threading
 import time
 import logging
 from dataclasses import dataclass
 from typing import Dict
-
-from lockable_singleton import LockableSingleton
 
 root = logging.getLogger()
 root.setLevel(logging.INFO)
@@ -23,6 +22,22 @@ class Utils:
     @staticmethod
     def now_millis():
         return int(time.time() * 1000)
+
+
+class LockableSingleton:
+    _instance = None
+    lock = threading.Lock()
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            with cls.lock:
+                # another thread could have created the instance
+                # before we acquired the lock. So check that the
+                # instance is still nonexistent.
+                if not cls._instance:
+                    cls._instance = super(LockableSingleton, cls).__new__(cls)
+        return cls._instance
+
 
 
 @dataclass
@@ -46,7 +61,7 @@ class RateLimitedClient:
             self.request_balance = min(self.request_balance + request_balance_addition, self.message_per_sec)
             self.last_request_balance_update = Utils.now_millis()
 
-        if self.burst_balance_maximum > 0 :
+        if self.burst_balance_maximum > 0:
             burst_balance_addition = int((Utils.now_millis() - self.last_burst_balance_update) * self.burst_balance_maximum / self.burst_balance_reload_interval)
             self.burst_balance = min(self.burst_balance + burst_balance_addition, self.burst_balance_maximum)
             self.last_burst_balance_update = Utils.now_millis()
@@ -69,6 +84,7 @@ class RateLimitedClient:
             return False
 
 
+# Performs client-side rate limiting so the load test can target a particular req/sec throughput.
 class RateLimiter(LockableSingleton):
     def __init__(self, throughput_per_second: int = 0, burst_balance_maximum: int = 0,
                  burst_balance_reload_interval: int = NEVER_UPDATE_BURST_BALANCE):

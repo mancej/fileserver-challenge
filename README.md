@@ -17,12 +17,15 @@ Like all production systems, this data-store has limited resources, so while you
 available to individual components, you may not exceed the limits set by the rules of this challenge. You may run more than one
 file server if desired. 
 
-**Here are the aggregate limits of your application:**
+**Here are the limits of your application:**
 
-1. The file server cannot maintain more than 25 total connections at any point in time.
-2. All services have a hard aggregate limit of 2CPU cores
+1. Each file server cannot maintain more than 10 total connections at any point in time.
+2. All services, including the fileserver(s) have a hard aggregate limit of 2CPU cores
 3. All services have a hard aggregate limit of 4GB Memory
-4. You may run more than one file server, but you may not run more than 4
+4. You may run more than one file server, but you may not run more than 5. All file server share a single data volume.
+
+> Beware, running more than 1 file server could result in data integrity challenges. Consider how you could prevent these challenges.
+
 
 First, you must write a (at least one) middleware application that will serve file data to-and-from the backend file server(s). You may write your application middleware in **any language**, but **do not over index on language, as it is far less important to performance than you might expect. **
 
@@ -50,10 +53,10 @@ will be displayed. The below metrics will aggregated:
 
 * HTTP 2XX’s
 * HTTP 5XX’s
-* Average successful throughput (requests / sec)
+* Average sustained throughput (requests / sec)
 * Maximum achieved successful throughput
 * Number of times invalid data was returned (i.e, I wrote X last, but was returned Y as a value)
-* ??
+* Edge case tests (consider what these edge cases could be)
 
 **What you’ll be given:**
 

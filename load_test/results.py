@@ -4,9 +4,10 @@ import logging
 from typing import List
 
 
-class RequestResult:
-    def __init__(self, response):
+class TestResult:
+    def __init__(self, response, was_failure: bool = False):
         self.response = response
+        self._was_failure = was_failure
 
     def was_success(self) -> bool:
         return 200 <= self.response.status_code < 300
@@ -17,11 +18,20 @@ class RequestResult:
     def was_error(self) -> bool:
         return self.response.status_code >= 400
 
+    def was_404(self) -> bool:
+        return self.response.status_code == 404
+
+    def was_4xx_error(self) -> bool:
+        return 400 <= self.response.status_code < 500
+
     def error_message(self) -> str:
         return self.response.text
 
     def was_5xx_error(self) -> bool:
         return self.response.status_code >= 500
+
+    def was_test_failure(self) -> bool:
+        return self.was_5xx_error() or self._was_failure
 
 
 class ResultStats:
@@ -43,7 +53,7 @@ class ResultStats:
         success_throughput = round(self.num_success / (time.time() - self.start_time), 1)
         logging.info("Test Configuration:")
         logging.info("------------------------------------------------")
-        logging.info(f"Target throughput: {self.target_throughput} req/sec   (configure in docker-compose.yml)")
+        logging.info(f"Target max throughput: {self.target_throughput} req/sec   (configure in docker-compose.yml)")
         logging.info(f"Max # files: {self.max_files}")
         logging.info(f"Max file size: {self.max_file_size} bytes.")
         logging.info(f"")
@@ -52,7 +62,7 @@ class ResultStats:
         logging.info(f"Total requests: {self.total_requests}")
         logging.info(f"Total success: {self.num_success}")
         logging.info(f"Attempted Throughput: {throughput} requests/sec")
-        logging.info(f"Successful Throughput: {success_throughput} requests/sec {self.calc_space(success_throughput)} [Target: 1000+ req/s]")
+        logging.info(f"Successful Throughput: {success_throughput} requests/sec {self.calc_space(success_throughput)} [Target: 500+ req/s]")
         logging.info(f"Total test failures: {self.num_failure}                {self.calc_space(self.num_failure)} [Target: 0]")
         logging.info(f"Total 5XX errors: {self.num_500s}                   {self.calc_space(self.num_500s)} [Target: 0]")
         logging.info(f"Total throttled requests: {self.num_throttled}.          {self.calc_space(self.num_throttled)} [Target: 0]")
@@ -71,17 +81,20 @@ class ResultStats:
         if len(self.other_errors) > 100:
             self.http_errors = self.http_errors[-100:]
 
-    def merge(self, result: RequestResult):
+    def merge(self, result: TestResult):
         self.total_requests = self.total_requests + 1
 
         if result.was_success():
             self.num_success = self.num_success + 1
 
-        if result.was_error() and not result.was_throttled():
+        if result.was_test_failure():
             self.num_failure = self.num_failure + 1
+            self.other_errors.append(result.error_message())
+
+        if result.was_5xx_error():
             self.http_errors.append(result.error_message())
-            if result.was_5xx_error():
-                self.num_500s = self.num_500s + 1
+            self.num_500s = self.num_500s + 1
+
 
         if result.was_throttled():
             self.num_throttled = self.num_throttled + 1

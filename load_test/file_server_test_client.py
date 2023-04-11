@@ -6,7 +6,7 @@ from typing import Set
 
 import requests
 import logging
-from results import RequestResult
+from results import TestResult
 
 
 @dataclasses.dataclass
@@ -15,12 +15,12 @@ class InvalidResponse:
     text: str
 
 
-class FileServerClient:
+class FileServerTestClient:
     def __init__(self, address: str, path_prefix: str, max_file_size: int):
         self.address = address
         self.path_prefix = path_prefix
         self.max_file_size = max_file_size
-        self._tracked_files: Set[str] = set()
+        self._tracked_files: Set[str] = set() # files known to load tester
         self._in_process: Set[str] = set()  # files with current open requests.
 
     def wait_for_open_in_process(self, file_name: str):
@@ -30,7 +30,7 @@ class FileServerClient:
 
         self._in_process.add(file_name)
 
-    def put_file(self, file_name: str) -> RequestResult:
+    def put_file(self, file_name: str) -> TestResult:
         self.wait_for_open_in_process(file_name)
         # Put a file
         file_size = random.randint(1, self.max_file_size)
@@ -41,16 +41,16 @@ class FileServerClient:
                 self._tracked_files.add(file_name)
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             self._in_process.remove(file_name)
-            return RequestResult(InvalidResponse(status_code=503, text=f"Server overloaded, request timeout or failed "
+            return TestResult(InvalidResponse(status_code=503, text=f"Server overloaded, request timeout or failed "
                                                                        f"connection: {e}"))
         except requests.exceptions.RequestException as e:
             self._in_process.remove(file_name)
-            return RequestResult(InvalidResponse(status_code=500, text=f"Unexpected request error: {e}"))
+            return TestResult(InvalidResponse(status_code=500, text=f"Unexpected request error: {e}"))
 
         self._in_process.remove(file_name)
-        return RequestResult(response)
+        return TestResult(response)
 
-    def get_file(self, file_name: str) -> RequestResult:
+    def get_file(self, file_name: str) -> TestResult:
         self.wait_for_open_in_process(file_name)
 
         # return the file contents
@@ -59,16 +59,16 @@ class FileServerClient:
             response = requests.get(f"{self.address}/{self.path_prefix}/{file_name}")
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             self._in_process.remove(file_name)
-            return RequestResult(InvalidResponse(status_code=503, text=f"Server overloaded, request timeout or failed "
+            return TestResult(InvalidResponse(status_code=503, text=f"Server overloaded, request timeout or failed "
                                                                        f"connection: {e}"))
         except requests.exceptions.RequestException as e:
             self._in_process.remove(file_name)
-            return RequestResult(InvalidResponse(status_code=500, text=f"Unexpected request error: {e}"))
+            return TestResult(InvalidResponse(status_code=500, text=f"Unexpected request error: {e}"))
 
         self._in_process.remove(file_name)
-        return RequestResult(response)
+        return TestResult(response)
 
-    def delete_file(self, file_name: str) -> RequestResult:
+    def delete_file(self, file_name: str) -> TestResult:
         self.wait_for_open_in_process(file_name)
         # Delete the file
         logging.debug(f"DELETING file: {file_name}")
@@ -78,13 +78,13 @@ class FileServerClient:
                 self._tracked_files.remove(file_name)
         except requests.exceptions.Timeout as e:
             self._in_process.remove(file_name)
-            return RequestResult(InvalidResponse(status_code=503, text=f"Server overloaded, request timeout: {e}"))
+            return TestResult(InvalidResponse(status_code=503, text=f"Server overloaded, request timeout: {e}"))
         except requests.exceptions.RequestException as e:
             self._in_process.remove(file_name)
-            return RequestResult(InvalidResponse(status_code=500, text=f"Unexpected request error: {e}"))
+            return TestResult(InvalidResponse(status_code=500, text=f"Unexpected request error: {e}"))
 
         self._in_process.remove(file_name)
-        return RequestResult(response)
+        return TestResult(response)
 
     # Returns a file that doesn't have an open request running. Return empty string if all files are currently in
     # process

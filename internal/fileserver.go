@@ -11,9 +11,10 @@ import (
 	"time"
 )
 
+// You may NOT change anything in this file (or any of the go files)
 const (
-	maxConnections        = 25
-	baseLatencyPerRequest = 750 // # ms added for all requests
+	maxConnections        = 10
+	baseLatencyPerRequest = 330 // # of ms added for all requests
 	port                  = 1234
 )
 
@@ -76,12 +77,14 @@ func (fs *FileServer) HandleGet(response http.ResponseWriter, request *http.Requ
 			return
 		}
 	}
-	fs.fileLock.Unlock()
+
+	defer fs.fileLock.Unlock()
 
 	// Read file from FS
 	file, err := os.Open(filePath)
 	if err != nil {
 		log.Errorf("Failed to read file: %s. Error: %+v", filePath, err)
+		fs.WriteResponseBody(response, err.Error())
 		response.WriteHeader(http.StatusInternalServerError)
 		return
 	}

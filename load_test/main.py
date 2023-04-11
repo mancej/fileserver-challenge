@@ -6,9 +6,9 @@ import threading
 import time
 from typing import List, Set
 
-from file_server_client import FileServerClient
+from file_server_test_client import FileServerTestClient
 from rate_limiter import RateLimiter
-from results import RequestResult, ResultStats
+from results import TestResult, ResultStats
 
 root = logging.getLogger()
 root.setLevel(os.getenv("LOG_LEVEL", default=logging.INFO))  # Set to logging.DEBUG for much more information
@@ -31,27 +31,34 @@ CLIENT_ID = "fileserver_load_tester"
 RESULT_STATS: ResultStats = ResultStats(REQUESTS_PER_SECOND, MAX_NUMBER_OF_FILES, MAX_FILE_SIZE_BYTES)
 RATE_LIMITER = RateLimiter(throughput_per_second=REQUESTS_PER_SECOND, burst_balance_maximum=0,
                            burst_balance_reload_interval=0)
-FILE_SERVER_CLIENT = FileServerClient(FILE_SERVER_ADDR, FILE_SERVER_PREFIX, MAX_FILE_SIZE_BYTES)
+FILE_SERVER_CLIENT = FileServerTestClient(FILE_SERVER_ADDR, FILE_SERVER_PREFIX, MAX_FILE_SIZE_BYTES)
 
 KEEP_RUNNING = True
 
+POSSIBLE_TESTS = [FILE_SERVER_CLIENT.get_file, FILE_SERVER_CLIENT.get_file, FILE_SERVER_CLIENT.get_file,
+                  FILE_SERVER_CLIENT.delete_file, FILE_SERVER_CLIENT.put_file]
 
-def perform_random_fileserver_action() -> RequestResult:
+
+def perform_random_fileserver_action() -> TestResult:
+    global POSSIBLE_TESTS
     # As NUMBER_OF_FILES approaches MAX_NUMBER_OF_FILES, reduce likelihood of creating new files
     create_new_file = random.randint(0, MAX_NUMBER_OF_FILES) > FILE_SERVER_CLIENT.tracked_count()
-    file_name = FILE_SERVER_CLIENT.get_random_not_in_process_file()
+    file_name = ""
+    to_execute = FILE_SERVER_CLIENT.put_file
 
-    # Select a random file operation to run, make get more common than delete, so we add it multiple times here
-    funcs = [FILE_SERVER_CLIENT.get_file, FILE_SERVER_CLIENT.get_file, FILE_SERVER_CLIENT.get_file,
-             FILE_SERVER_CLIENT.delete_file, FILE_SERVER_CLIENT.put_file]
-    to_execute = random.choice(funcs)
+    if not create_new_file:
+        file_name = FILE_SERVER_CLIENT.get_random_not_in_process_file()
+        # Select a random file operation to run, make get more common than delete, so we add it multiple times here
+        to_execute = random.choice(POSSIBLE_TESTS)
 
+    is_create = False
     if create_new_file or not file_name:
         if create_new_file and FILE_SERVER_CLIENT.tracked_count() < MAX_NUMBER_OF_FILES:
+            is_create = True
             logging.debug(f"Got number of files: {FILE_SERVER_CLIENT.tracked_count()}, creating new file.")
             file_name = ''.join(random.choices(string.ascii_letters, k=12))
-
         to_execute = FILE_SERVER_CLIENT.put_file
+
     try:
         return to_execute(file_name=file_name)
     except Exception as e:
@@ -64,7 +71,7 @@ def run_load_test():
     try:
         while KEEP_RUNNING:
             if RATE_LIMITER.is_allowed(CLIENT_ID):
-                result: RequestResult = perform_random_fileserver_action()
+                result: TestResult = perform_random_fileserver_action()
                 RESULT_STATS.merge(result)
 
             # logging.info(rate_limiter.get_clients())
@@ -76,7 +83,7 @@ def run_load_test():
         logging.fatal(e)
 
 
-NUM_WORKERS = REQUESTS_PER_SECOND
+NUM_WORKERS = int(REQUESTS_PER_SECOND / 3)
 threads = []
 
 logging.info(f"Starting load test attempting {REQUESTS_PER_SECOND} target throughput.")
