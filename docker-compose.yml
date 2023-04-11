@@ -11,7 +11,7 @@ services:
         limits:
           memory: 512M
           cpus: "0.25"
-      replicas: 4
+      replicas: 1
     volumes:
       - ./.fileserver/data:/tmp/
 
