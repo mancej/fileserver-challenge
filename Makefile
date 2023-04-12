@@ -35,7 +35,7 @@ show-containers: ## Show running container information
 
 .PHONY: tail
 tail:  ## Live tail logs of load test script
-	docker logs -f fileserver-challenge-load_tester-1
+	docker logs -f load-tester
 
 .PHONY: stats
 stats: ## Show container CPU / Memory / IO Utilization

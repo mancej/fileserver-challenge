@@ -21,6 +21,7 @@ services:
   # This container is for convenience and does not count against your resource cap.
   # Comment this out if you want to manually run load tests from the `load_test` directory.
   load_tester:
+    container_name: load-tester
     build:
       context: load_test/
     environment:
