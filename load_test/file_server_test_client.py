@@ -22,6 +22,12 @@ class FileServerTestClient:
         self.max_file_size = max_file_size
         self._tracked_files: Set[str] = set() # files known to load tester
         self._in_process: Set[str] = set()  # files with current open requests.
+        self._session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=15000, pool_maxsize=25000)
+        self._session.mount('http://', adapter)
+        self._headers = {
+            'Connection': 'close'
+        }
 
     def wait_for_open_in_process(self, file_name: str):
         jitter = random.randint(0, 100)
@@ -36,7 +42,7 @@ class FileServerTestClient:
         file_size = random.randint(1, self.max_file_size)
         file_bytes = base64.b64encode(random.randbytes(file_size)).decode('ascii')
         try:
-            response = requests.put(f"{self.address}/{self.path_prefix}/{file_name}", data=file_bytes)
+            response = self._session.put(f"{self.address}/{self.path_prefix}/{file_name}", data=file_bytes, timeout=5, headers=self._headers)
             if 200 <= response.status_code < 300:
                 self._tracked_files.add(file_name)
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
@@ -56,7 +62,7 @@ class FileServerTestClient:
         # return the file contents
         logging.debug(f"GETTING file: {file_name}")
         try:
-            response = requests.get(f"{self.address}/{self.path_prefix}/{file_name}")
+            response = self._session.get(f"{self.address}/{self.path_prefix}/{file_name}", timeout=1.25, headers=self._headers)
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             self._in_process.remove(file_name)
             return TestResult(InvalidResponse(status_code=503, text=f"Server overloaded, request timeout or failed "
@@ -73,7 +79,7 @@ class FileServerTestClient:
         # Delete the file
         logging.debug(f"DELETING file: {file_name}")
         try:
-            response = requests.delete(f"{self.address}/{self.path_prefix}/{file_name}")
+            response = self._session.delete(f"{self.address}/{self.path_prefix}/{file_name}", timeout=1.25, headers=self._headers)
             if 200 <= response.status_code < 300:
                 self._tracked_files.remove(file_name)
         except requests.exceptions.Timeout as e:

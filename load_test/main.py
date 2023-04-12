@@ -35,9 +35,10 @@ FILE_SERVER_CLIENT = FileServerTestClient(FILE_SERVER_ADDR, FILE_SERVER_PREFIX, 
 
 KEEP_RUNNING = True
 
-POSSIBLE_TESTS = [FILE_SERVER_CLIENT.get_file, FILE_SERVER_CLIENT.get_file, FILE_SERVER_CLIENT.get_file,
-                  FILE_SERVER_CLIENT.delete_file, FILE_SERVER_CLIENT.put_file]
-
+# Make load test default to be read heavy which more closely simulates real world traffic
+POSSIBLE_TESTS = [FILE_SERVER_CLIENT.delete_file, FILE_SERVER_CLIENT.put_file, FILE_SERVER_CLIENT.put_file]
+for i in range(0, 75):
+    POSSIBLE_TESTS.append(FILE_SERVER_CLIENT.get_file)
 
 def perform_random_fileserver_action() -> TestResult:
     global POSSIBLE_TESTS
