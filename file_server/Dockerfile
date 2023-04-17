@@ -4,7 +4,7 @@ ENV CGO_ENABLED=0
 
 WORKDIR /build
 
-COPY . .
+COPY .. .
 
 RUN go build -o main cmd/main.go
 

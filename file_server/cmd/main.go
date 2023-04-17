@@ -1,7 +1,7 @@
 package main
 
 import (
-	"FileServerChallenge/internal"
+	"github.com/mancej/fileserver-challenge/file_server/internal"
 	log "github.com/sirupsen/logrus"
 	"time"
 )
@@ -9,8 +9,8 @@ import (
 func main() {
 
 	log.SetFormatter(&log.TextFormatter{
-		DisableColors: true,
-		FullTimestamp: true,
+		DisableColors: false,
+		FullTimestamp: false,
 	})
 
 	start := time.Now()
@@ -20,6 +20,6 @@ func main() {
 	log.Fatal(fs.Run())
 
 	finish := time.Now()
-	totalTime := start.Sub(finish)
+	totalTime := finish.Sub(start)
 	log.Infof("Finished in %f seconds.", totalTime.Seconds())
 }
