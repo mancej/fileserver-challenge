@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/rodaine/table"
+	log "github.com/sirupsen/logrus"
 	"math"
 	"sync"
 	"time"
@@ -117,15 +118,25 @@ func NewResultAggregator(cfg TestSchedulerConfig) *ResultAggregator {
 func (ra *ResultAggregator) Run() {
 	keepRunning := true
 	go func() {
+		var lastFiveIntervals []int
 		lastUpdate := time.Now()
 		for {
+
 			time.Sleep(time.Millisecond * 25)
 			if time.Now().Sub(lastUpdate) > ra.Results.interval {
+				lastFiveIntervals = append(lastFiveIntervals, ra.Results.intervalCount)
+				// Keep last 5 intervals for current throughput calculation
+				if len(lastFiveIntervals) > 4 {
+					lastFiveIntervals = lastFiveIntervals[1:]
+				}
+
 				ra.Results.resultLock.Lock()
-				ra.Results.numLastInterval = ra.Results.intervalCount
-				ra.Results.intervalCount = 0
 				lastUpdate = time.Now()
+				ra.Results.numLastInterval = average(lastFiveIntervals)
+				ra.Results.intervalCount = 0
 				ra.Results.resultLock.Unlock()
+				log.Infof("Channel length: %d", len(ra.resultsChan))
+				log.Infof("Schedule length: %d", len(ra.cfg.SchedulerChan))
 			}
 		}
 	}()
@@ -135,4 +146,15 @@ func (ra *ResultAggregator) Run() {
 		testResult, keepRunning = <-ra.resultsChan
 		ra.Results.Merge(testResult)
 	}
+}
+
+func average(items []int) int {
+	sum := 0
+	for i := 0; i < len(items); i++ {
+		sum = sum + items[i]
+	}
+
+	log.Info("SUM: %d", sum)
+	log.Info("AVERGAE: %d", sum/len(items))
+	return sum / len(items)
 }

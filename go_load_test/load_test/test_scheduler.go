@@ -95,7 +95,7 @@ func (ts *TestScheduler) Run() {
 func (ts *TestScheduler) ScheduleTest() {
 	targetSeed := ts.seed.TestsPerDuration + (ts.growthFactor * ts.seedGrowthAmount)
 
-	// If we are after our reset time, reset to a new time, and reset num scheduled to whatever'se left, or 0
+	// If we are after our reset time, reset to a new time, and reset num scheduled to whatever's left, or 0
 	if time.Now().UnixMicro() > ts.seedResetTime.UnixMicro() {
 		ts.seedResetTime = time.Now().Add(ts.seed.Duration)
 		ts.numScheduled = targetSeed - ts.numScheduled
@@ -114,7 +114,7 @@ func (ts *TestScheduler) ScheduleTest() {
 
 // GetTestFunc selects a psuedo random test function to run
 func (ts *TestScheduler) GetTestFunc() Test {
-	rand.Seed(time.Now().Unix())
+	rand.Seed(time.Now().UnixNano())
 	createNewFile := rand.Intn(ts.testConfig.MaxFileCount) > len(ts.trackedFiles)
 	var fileName string
 	var testToRun = Test{
