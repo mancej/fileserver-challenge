@@ -14,7 +14,10 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+go_load_test/.idea
+python_load_test/.idea
 .idea/
 
 ## File volume
 .file-server/
+.proxy/
