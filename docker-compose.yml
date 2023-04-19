@@ -16,22 +16,7 @@ services:
       - ./.fileserver/data:/tmp/
 
 #   Add more container definitions below
-  proxy:
-    container_name: proxy
-    build:
-      context: proxy/
-    ports:
-      - "8080"
-    environment:
-      - FILE_SERVER_HOST=file_server
-      - FILE_SERVER_PORT=1234
-      - PROXY_MODE=simple
-    deploy:
-      resources:
-        limits:
-          memory: 512MB
-          cpus: "1"
-      replicas: 1
+
 
   # LOAD TESTER:
   # This container is for convenience and does not count against your resource cap.
