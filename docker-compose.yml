@@ -11,7 +11,7 @@ services:
         limits:
           memory: 128M
           cpus: "0.25"
-      replicas: 1
+      replicas: 4
     volumes:
       - ./.fileserver/data:/tmp/
 
@@ -46,7 +46,7 @@ services:
       - FILE_SERVER_PROTO=http                  # Point this to your application middleware (port will change)
       - FILE_SERVER_PATH_PREFIX=api/fileserver  # Point this to your application middleware (port will change)
       - REQUESTS_PER_SECOND=1                   # Bases requests/sec the load test will begin on.
-      - SEED_GROWTH_AMOUNT=1                    # Every second, this many more requests will be scheduled
+      - SEED_GROWTH_AMOUNT=0                    # Every second, this many more requests will be scheduled
       - MAX_FILE_COUNT=5000                     # Recommend 2-5x REQUESTS_PER_SECOND
       - MAX_FILE_SIZE=512                       # 1KB, but could be set to ANYTHING in live tests
       - TERM=xterm-256color
