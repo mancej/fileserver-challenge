@@ -20,3 +20,4 @@ python_load_test/.idea
 
 ## File volume
 .file-server/
+.proxy/

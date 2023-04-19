@@ -59,6 +59,7 @@ func main() {
 		SchedulerChan: make(chan load_test.Test, 50000),       // Tests scheduled to run asap are sent here
 		ResultChan:    make(chan load_test.TestResult, 15000), // Results of tests are sent here
 		ShutdownChan:  make(chan bool, 1),                     // If closed, shuts down scheduling
+		FailureChan:   make(chan load_test.TestResult, 1000),  // All test failures published here
 	}
 
 	testRunnerCfg := load_test.TestRunnerConfig{
@@ -100,6 +101,7 @@ func main() {
 		close(cfg.ResultChan)
 		close(cfg.ShutdownChan)
 		close(cfg.ResultChan)
+		close(cfg.FailureChan)
 		keepRunning = false
 	}()
 

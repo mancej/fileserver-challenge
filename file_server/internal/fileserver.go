@@ -209,9 +209,15 @@ func (fs *FileServer) HandleDelete(response http.ResponseWriter, request *http.R
 	defer fs.fileLock.Unlock()
 
 	delete(fs.knownFiles, fileName)
+	_, err := os.Stat(filePath)
+	if err != nil {
+		response.WriteHeader(http.StatusOK)
+		fs.WriteResponseBody(response, "File not found. Already deleted.")
+		return
+	}
 
 	// Open file for writing
-	err := os.Remove(filePath)
+	err = os.Remove(filePath)
 	if err != nil {
 		log.Errorf("Failed to delete file: %s. Error: %+v", filePath, err)
 		response.WriteHeader(http.StatusInternalServerError)

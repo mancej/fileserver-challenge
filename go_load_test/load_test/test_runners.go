@@ -26,6 +26,12 @@ type TestRunnerConfig struct {
 // Run Listens to scheduled test chann and runs tests
 func (tr *TestRunner) Run() {
 	client := &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConns:        500,
+			MaxIdleConnsPerHost: 500,
+			MaxConnsPerHost:     25000,
+			IdleConnTimeout:     0,
+		},
 		Timeout: time.Second * 1,
 	}
 	exec := NewTestExecutor(client, tr.cfg.EndpointCfg, tr.cfg.TestConfig, tr.cfg.ResultChan)
@@ -46,6 +52,14 @@ func (tr *TestRunner) Run() {
 		} else if test.TestType == DELETE {
 			funcToRun = func() {
 				exec.DeleteFile(test.fileName)
+			}
+		} else if test.TestType == CREATE {
+			funcToRun = func() {
+				exec.CreateFile(test.fileName)
+			}
+		} else if test.TestType == CONSISTENCY {
+			funcToRun = func() {
+				exec.ConsistencyCheck(test.fileName)
 			}
 		}
 
