@@ -5,6 +5,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 	log "github.com/sirupsen/logrus"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"sync"
@@ -19,14 +20,19 @@ const (
 )
 
 func NewFileServer() *FileServer {
-	return &FileServer{connections: 0, knownFiles: map[string]bool{}}
+	return &FileServer{connections: 0,
+		knownFiles: map[string]bool{},
+		inProcess:  make(map[string]bool),
+	}
 }
 
 type FileServer struct {
-	connections int
-	knownFiles  map[string]bool
-	fileLock    sync.RWMutex
-	connLock    sync.RWMutex
+	connections   int
+	knownFiles    map[string]bool
+	inProcess     FileSet
+	fileLock      sync.RWMutex
+	inProcessLock sync.RWMutex
+	connLock      sync.RWMutex
 }
 
 func (fs *FileServer) Run() error {
@@ -65,21 +71,33 @@ func (fs *FileServer) HandleGet(response http.ResponseWriter, request *http.Requ
 		return
 	}
 
-	fs.fileLock.Lock()
+	// Mark file in process so other FS ops for this file wait behind it
+	fs.waitForOpenInProcess(fileName)
+	defer fs.removeInProcessLock(fileName)
+
+	fs.fileLock.RLock()
 	_, hasFile := fs.knownFiles[fileName]
 	if !hasFile {
 		// If file not found in known file cache, check fs directly in case file was written by different process.
 		_, err := os.Stat(filePath)
 		if err != nil {
+			log.Errorf("File not found err: %+v", err)
 			response.WriteHeader(http.StatusNotFound)
 			fs.WriteResponseBody(response, "File not found.")
-			fs.fileLock.Unlock()
+			fs.fileLock.RUnlock()
 			return
 		}
+
+		// No err, file must exist, add it to known files
+		fs.fileLock.RUnlock()
+		fs.fileLock.Lock()
+		fs.knownFiles[fileName] = true
+		fs.fileLock.Unlock()
+	} else {
+		defer fs.fileLock.RUnlock()
 	}
 
-	defer fs.fileLock.Unlock()
-
+	fs.inProcess.Add(filePath)
 	// Read file from FS
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -139,17 +157,15 @@ func (fs *FileServer) HandlePut(response http.ResponseWriter, request *http.Requ
 	filePath := fmt.Sprintf("/tmp/%s", fileName)
 	defer request.Body.Close()
 
-	log.Infof("Saving file: %s", filePath)
-
 	if fileName == "" {
 		response.WriteHeader(http.StatusBadRequest)
 		fs.WriteResponseBody(response, "No file name provided")
 		return
 	}
 
-	fs.fileLock.Lock()
-	defer fs.fileLock.Unlock()
-	fs.knownFiles[fileName] = true
+	// Mark file in process so other FS ops for this file wait behind it
+	fs.waitForOpenInProcess(fileName)
+	defer fs.removeInProcessLock(fileName)
 
 	// Open file for writing
 	file, err := os.Create(filePath)
@@ -177,7 +193,11 @@ func (fs *FileServer) HandlePut(response http.ResponseWriter, request *http.Requ
 		return
 	}
 
+	fs.fileLock.Lock()
+	defer fs.fileLock.Unlock()
+
 	// Write successful response
+	fs.knownFiles[fileName] = true
 	response.WriteHeader(http.StatusCreated)
 	return
 }
@@ -208,9 +228,13 @@ func (fs *FileServer) HandleDelete(response http.ResponseWriter, request *http.R
 	fs.fileLock.Lock()
 	defer fs.fileLock.Unlock()
 
-	delete(fs.knownFiles, fileName)
+	// Mark file in process so other FS ops for this file wait behind it
+	fs.waitForOpenInProcess(fileName)
+	defer fs.removeInProcessLock(fileName)
+
 	_, err := os.Stat(filePath)
 	if err != nil {
+		delete(fs.knownFiles, fileName)
 		response.WriteHeader(http.StatusOK)
 		fs.WriteResponseBody(response, "File not found. Already deleted.")
 		return
@@ -226,6 +250,7 @@ func (fs *FileServer) HandleDelete(response http.ResponseWriter, request *http.R
 	}
 
 	// Write successful response
+	delete(fs.knownFiles, fileName)
 	response.WriteHeader(http.StatusOK)
 }
 
@@ -254,4 +279,28 @@ func (fs *FileServer) WriteResponseBody(response http.ResponseWriter, message st
 	if err != nil {
 		log.Errorf("Failed to write response body: %+v", err)
 	}
+}
+
+func (fs *FileServer) waitForOpenInProcess(fileName string) {
+	jitter := rand.Intn(25)
+
+	fs.inProcessLock.RLock()
+	fileInProcess := fs.inProcess.Has(fileName)
+	fs.inProcessLock.RUnlock()
+	for fileInProcess {
+		time.Sleep(time.Millisecond * time.Duration(jitter))
+		fs.inProcessLock.RLock()
+		fileInProcess = fs.inProcess.Has(fileName)
+		fs.inProcessLock.RUnlock()
+	}
+
+	fs.inProcessLock.Lock()
+	defer fs.inProcessLock.Unlock()
+	fs.inProcess.Add(fileName)
+}
+
+func (fs *FileServer) removeInProcessLock(fileName string) {
+	fs.inProcessLock.Lock()
+	fs.inProcess.Delete(fileName)
+	fs.inProcessLock.Unlock()
 }

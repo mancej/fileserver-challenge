@@ -28,11 +28,11 @@ func (tr *TestRunner) Run() {
 	client := &http.Client{
 		Transport: &http.Transport{
 			MaxIdleConns:        500,
-			MaxIdleConnsPerHost: 500,
-			MaxConnsPerHost:     25000,
+			MaxIdleConnsPerHost: 100,
+			MaxConnsPerHost:     0,
 			IdleConnTimeout:     0,
 		},
-		Timeout: time.Second * 1,
+		Timeout: time.Second * 2,
 	}
 	exec := NewTestExecutor(client, tr.cfg.EndpointCfg, tr.cfg.TestConfig, tr.cfg.ResultChan)
 
@@ -41,6 +41,11 @@ func (tr *TestRunner) Run() {
 	for keepRunning {
 		var funcToRun func()
 		test, keepRunning = <-tr.cfg.ScheduleChan
+
+		if !keepRunning {
+			break
+		}
+
 		if test.TestType == GET {
 			funcToRun = func() {
 				exec.GetFile(test.fileName)

@@ -90,12 +90,15 @@ func (ts *TestScheduler) Run() {
 		}
 		time.Sleep(time.Microsecond * 50)
 	}
+
+	close(ts.cfg.SchedulerChan)
 }
 
 // ScheduleTests schedules tests on the channel if we haven't met our quota based on seed configs
 func (ts *TestScheduler) ScheduleTests() {
 	targetSeed := ts.cfg.SeedCadence.TestsPerDuration + (ts.growthFactor * ts.cfg.SeedGrowthAmount)
 	startTime := time.Now()
+	
 	for ts.numScheduled < targetSeed {
 		ts.cfg.SchedulerChan <- ts.GetTestFunc()
 		ts.numScheduled++
@@ -116,7 +119,6 @@ func (ts *TestScheduler) ScheduleTests() {
 		ts.numScheduled = targetSeed - ts.numScheduled
 		ts.growthFactor++
 		log.Infof("Now scheduling: %d req/sec", ts.cfg.SeedCadence.TestsPerDuration+(ts.growthFactor*ts.cfg.SeedGrowthAmount))
-		log.Infof("Num tracked files: %d", len(ts.trackedFiles))
 	}
 
 }
@@ -134,13 +136,14 @@ func (ts *TestScheduler) GetTestFunc() Test {
 	if createNewFile {
 		testToRun.fileName = RandStringBytes(15)
 		// Give 2% chance to execute consistency test, or a higher % chance the more tracked files there are
-		// If the load test just started, only run consistency tests for the first 15 seconds.
+		// If the load test just started, only run consistency tests for the first 5 seconds.
 		bonus := ts.cfg.TestConfig.MaxFileCount / (ts.cfg.TestConfig.MaxFileCount - len(ts.trackedFiles) + 1)
-		runConsistencyTest := rand.Intn(100)+bonus >= 98 || time.Now().Sub(ts.startTime) < time.Second*15
+		runConsistencyTest := rand.Intn(100)+bonus >= 98 || time.Now().Sub(ts.startTime) < time.Second*5
 		if runConsistencyTest {
 			// This tests is 4 requests total, so add 3 extra.
 			ts.numScheduled += 3
 			testToRun.TestType = CONSISTENCY
+			log.Infof("Scheduling consistency test for file: %s", testToRun.fileName)
 		} else {
 			testToRun.TestType = CREATE
 			ts.trackedFiles.Add(testToRun.fileName)

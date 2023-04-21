@@ -83,33 +83,35 @@ func main() {
 
 	// Repeatedly print results
 	go func() {
-		for {
-			time.Sleep(time.Second)
-			load_test.CallClear()
-			aggregator.Results.PrintResults()
-			aggregator.Results.PrintErrors()
+		keepRunning := true
+		for keepRunning {
+			select {
+			case _, keepRunning = <-cfg.ShutdownChan:
+			default:
+				time.Sleep(time.Second)
+				load_test.CallClear()
+				aggregator.Results.PrintResults()
+				aggregator.Results.PrintErrors()
+			}
 		}
 	}()
 
 	// Wait for ctrl +c
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	keepRunning := true
 	go func() {
 		<-c
 		fmt.Println("\r- Ctrl+C pressed in Terminal")
-		close(cfg.ResultChan)
 		close(cfg.ShutdownChan)
-		close(cfg.ResultChan)
-		close(cfg.FailureChan)
-		keepRunning = false
 	}()
 
-	for keepRunning {
-		time.Sleep(time.Second)
-	}
+	// Wait for channel to close
+	<-cfg.ShutdownChan
+	time.Sleep(time.Second * 2)
 
 	finish := time.Now()
 	totalTime := finish.Sub(start)
 	log.Infof("Finished in %f seconds.", totalTime.Seconds())
+	aggregator.PrintScore()
+	time.Sleep(time.Second * 1)
 }

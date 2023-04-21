@@ -1,5 +1,9 @@
 package load_test
 
+const (
+	MaxFailuresBeforeExit = 2000
+)
+
 type TestEndpointConfig struct {
 	Proto      string // http or https
 	Host       string // localhost or google.com

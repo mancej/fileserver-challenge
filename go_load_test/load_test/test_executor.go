@@ -287,6 +287,18 @@ func (tr *TestExecutor) ConsistencyCheck(fileName string) {
 		return
 	}
 
+	if response.StatusCode != http.StatusCreated {
+		tr.results <- TestResult{
+			fileName: fileName,
+			testType: CONSISTENCY,
+			response: response,
+			message:  fmt.Sprintf("PUT failed due to unexpected status code, got: %d but expected 201.", response.StatusCode),
+			err:      err,
+			failed:   true,
+		}
+		return
+	}
+
 	// Fetch immediately after write, verify data is consistent.
 	response, err = tr.client.Get(tr.buildPath(fileName))
 	if err != nil {
@@ -301,13 +313,25 @@ func (tr *TestExecutor) ConsistencyCheck(fileName string) {
 		return
 	}
 
+	if response.StatusCode != http.StatusOK {
+		tr.results <- TestResult{
+			fileName: fileName,
+			testType: CONSISTENCY,
+			response: response,
+			message:  fmt.Sprintf("GET failed due to unexpected status code, got: %d but expected 200.", response.StatusCode),
+			err:      err,
+			failed:   true,
+		}
+		return
+	}
+
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		tr.results <- TestResult{
 			fileName: fileName,
 			testType: CONSISTENCY,
 			response: response,
-			message:  "Error decoding response body",
+			message:  fmt.Sprintf("Error decoding response body: %s", err.Error()),
 			err:      err,
 			failed:   true,
 		}
@@ -346,6 +370,18 @@ func (tr *TestExecutor) ConsistencyCheck(fileName string) {
 			testType: CONSISTENCY,
 			response: response,
 			message:  "Error executing http DELETE request",
+			err:      err,
+			failed:   true,
+		}
+		return
+	}
+
+	if response.StatusCode != http.StatusOK {
+		tr.results <- TestResult{
+			fileName: fileName,
+			testType: CONSISTENCY,
+			response: response,
+			message:  fmt.Sprintf("DELETE failed due to unexpected status code, got: %d but expected 200.", response.StatusCode),
 			err:      err,
 			failed:   true,
 		}

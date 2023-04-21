@@ -12,28 +12,30 @@ import (
 // Listens to a channel of test results. Aggregates results + provides metrics.
 
 type TestResults struct {
-	startTime                  time.Time
-	numRequests                int
-	numSuccess                 int
-	numGet                     int
-	numPut                     int
-	numDelete                  int
-	numConsistency             int
-	numFailure                 int
-	numThrottled               int
-	intervalCount              int
-	interval                   time.Duration
-	num500s                    int
-	httpErrors                 []string
-	otherErrors                []string
-	resultLock                 sync.RWMutex
-	numLastInterval            int
-	numSuccessLastInterval     int
-	numGetLastInterval         int
-	numPutLastInterval         int
-	numDeleteLastInterval      int
-	numConsistencyLastInterval int
-	numThrottledLastInterval   int
+	startTime                      time.Time
+	numRequests                    int
+	numSuccess                     int
+	numGet                         int
+	numPut                         int
+	numDelete                      int
+	numConsistency                 int
+	numFailure                     int
+	numFailedConsistency           int
+	numThrottled                   int
+	intervalCount                  int
+	interval                       time.Duration
+	num500s                        int
+	httpErrors                     []string
+	otherErrors                    []string
+	resultLock                     sync.RWMutex
+	numLastInterval                int
+	numSuccessLastInterval         int
+	numGetLastInterval             int
+	numPutLastInterval             int
+	numDeleteLastInterval          int
+	numConsistencyLastInterval     int
+	numThrottledLastInterval       int
+	maxSeenSuccessfulRequestPerSec int
 }
 
 func (tr *TestResults) Merge(result TestResult) {
@@ -64,6 +66,7 @@ func (tr *TestResults) Merge(result TestResult) {
 	}
 
 	if result.WasTestFailure() && result.TestType() == CONSISTENCY {
+		tr.numFailedConsistency++
 		tr.otherErrors = append(tr.otherErrors, result.message)
 	}
 
@@ -106,6 +109,8 @@ func (tr *TestResults) PrintResults() {
 	tbl.AddRow("# Requests", tr.numRequests, "")
 	tbl.AddRow("# Test Success", tr.numSuccess, "")
 	tbl.AddRow("# Test Failures", tr.numFailure)
+	tbl.AddRow("# Consistency Test Success", tr.numConsistency-tr.numFailedConsistency)
+	tbl.AddRow("# Consistency Test Failures", tr.numFailedConsistency)
 	tbl.AddRow("# 5XX Errors", tr.num500s)
 	tbl.AddRow("# Throttled", tr.numThrottled)
 	tbl.AddRow("# Current THROTTLE/sec", tr.numThrottledLastInterval)
@@ -115,6 +120,7 @@ func (tr *TestResults) PrintResults() {
 	tbl.AddRow("# Current CONSISTENCY/sec", tr.numConsistencyLastInterval, "(4 requests per check)")
 	tbl.AddRow("Current req/sec", currentThroughput, "")
 	tbl.AddRow("Current Successful req/sec", currentSuccessful, "")
+	tbl.AddRow("Max Successful req/sec", tr.maxSeenSuccessfulRequestPerSec, "")
 	tbl.AddRow("Average req/sec", throughput, "")
 	tbl.AddRow("Average Successful req/sec", successThroughput, "")
 	tbl.Print()
@@ -137,6 +143,8 @@ func (tr *TestResults) PrintErrors() {
 	for i := 0; i < Min(len(tr.otherErrors), 5); i++ {
 		fmt.Println(tr.otherErrors[len(tr.otherErrors)-i-1])
 	}
+	fmt.Println()
+	fmt.Println()
 }
 
 type ResultAggregator struct {
@@ -157,7 +165,6 @@ func NewResultAggregator(cfg TestSchedulerConfig) *ResultAggregator {
 }
 
 func (ra *ResultAggregator) Run() {
-	keepRunning := true
 	go func() {
 		var lastFiveIntervals, lastFiveIntervalsSuccess, lastFiveIntervalsGets,
 			lastFiveIntervalsPuts, lastFiveIntervalsDeletes, lastFiveIntervalsThrottles,
@@ -203,19 +210,46 @@ func (ra *ResultAggregator) Run() {
 				ra.Results.numThrottledLastInterval = average(lastFiveIntervalsThrottles)
 				ra.Results.numConsistencyLastInterval = average(lastFiveIntervalsConsistency)
 				ra.Results.intervalCount = 0
+				if ra.Results.numSuccessLastInterval > ra.Results.maxSeenSuccessfulRequestPerSec {
+					ra.Results.maxSeenSuccessfulRequestPerSec = ra.Results.numSuccessLastInterval
+				}
 				ra.Results.resultLock.Unlock()
+
+				if ra.Results.numFailure > MaxFailuresBeforeExit {
+					close(ra.cfg.ShutdownChan)
+					//time.Sleep(time.Second * 2)
+					//// Give goroutines time to publish their results. All reqs have a 2s timeout.
+					//close(ra.cfg.ResultChan)
+					break
+				}
+
 			}
 		}
 	}()
 
+	keepRunning := true
 	for keepRunning {
 		var testResult TestResult
 		testResult, keepRunning = <-ra.resultsChan
 		ra.Results.Merge(testResult)
-		if testResult.WasTestFailure() || testResult.Was404() {
+		if (testResult.WasTestFailure() || testResult.Was404()) && keepRunning {
 			ra.cfg.FailureChan <- testResult
 		}
 	}
+
+}
+
+func (ra *ResultAggregator) PrintScore() {
+	consistencyRate := float64(1) - float64(ra.Results.numFailedConsistency)/float64(ra.Results.numConsistency)
+	successRate := float64(1) - float64(ra.Results.numFailure)/float64(ra.Results.numSuccess+ra.Results.numFailure)
+	scoreModifier := 2.2 // Helps separate lower scores by larger variances
+	fmt.Printf("Your consistency accuracy was %f percent", math.Round(consistencyRate*10000)/10000*100)
+	fmt.Println()
+	fmt.Printf("Your success rate was %f percent", math.Round(successRate*10000)/10000*100)
+	fmt.Println()
+	score := int(math.Round(float64(ra.Results.maxSeenSuccessfulRequestPerSec) * scoreModifier * consistencyRate * successRate))
+	fmt.Printf("Your total score is: %d", score)
+	fmt.Println()
 }
 
 func average(items []int) int {
