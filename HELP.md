@@ -21,7 +21,7 @@ or
 
 ### Rebuild & restart fresh file server and load tester
 
-`make start-clean-`
+`make start-clean`
 
 or
 
@@ -29,8 +29,14 @@ or
 
 ### Tail logs of load test container
 
-`docker logs -f fileserver-challenge-load_tester-1`
+`docker logs -f load-tester`
 
+### View stats of running containers (CPU / Memory)
+`make stats`
+
+or 
+
+`docker stats`
 
 ### Add a sample file
 
