@@ -36,6 +36,9 @@ type TestResults struct {
 	numConsistencyLastInterval     int
 	numThrottledLastInterval       int
 	maxSeenSuccessfulRequestPerSec int
+	lastPrintedNumSuccess          int
+	lastPrintedNumFailure          int
+	lastPrintedNumRequests         int
 }
 
 func (tr *TestResults) Merge(result TestResult) {
@@ -125,6 +128,9 @@ func (tr *TestResults) PrintResults() {
 	tbl.AddRow("Average Successful req/sec", successThroughput, "")
 	tbl.Print()
 
+	tr.lastPrintedNumFailure = tr.numFailure
+	tr.lastPrintedNumSuccess = tr.numSuccess
+	tr.lastPrintedNumRequests = tr.numRequests
 }
 
 func (tr *TestResults) PrintErrors() {
@@ -247,8 +253,12 @@ func (ra *ResultAggregator) PrintScore() {
 	fmt.Println()
 	fmt.Printf("Your success rate was %f percent", math.Round(successRate*10000)/10000*100)
 	fmt.Println()
+	fmt.Printf("Your maximum achieved successful requests/sec was %d", ra.Results.maxSeenSuccessfulRequestPerSec)
+	fmt.Println()
+	fmt.Printf("Your test completed after %d seconds.", int(time.Now().Sub(ra.Results.startTime).Seconds()))
+	fmt.Println()
 	score := int(math.Round(float64(ra.Results.maxSeenSuccessfulRequestPerSec) * scoreModifier * consistencyRate * successRate))
-	fmt.Printf("Your total score is: %d", score)
+	fmt.Printf("Your total score is: %d.", score)
 	fmt.Println()
 }
 

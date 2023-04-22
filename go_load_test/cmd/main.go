@@ -38,7 +38,9 @@ func main() {
 	maxFileCount, _ := strconv.Atoi(load_test.GetEnv("MAX_FILE_COUNT", "500"))
 	maxFileSize, _ := strconv.ParseInt(load_test.GetEnv("MAX_FILE_SIZE", "1024"), 10, 64)
 	requestsPerSecond, _ := strconv.Atoi(load_test.GetEnv("REQUESTS_PER_SECOND", "1"))
-	seedGrowthAmount, _ := strconv.Atoi(load_test.GetEnv("SEED_GROWTH_AMOUNT", "1"))
+	seedGrowthAmount, _ := strconv.ParseFloat(load_test.GetEnv("SEED_GROWTH_AMOUNT", "1.0"), 32)
+	enableRequestRamp, _ := strconv.ParseBool(load_test.GetEnv("ENABLE_FILE_RAMP", "true"))
+	enableFileRamp, _ := strconv.ParseBool(load_test.GetEnv("ENABLE_REQUEST_RAMP", "true"))
 
 	cfg := load_test.TestSchedulerConfig{
 		EndpointCfg: load_test.TestEndpointConfig{
@@ -51,10 +53,12 @@ func main() {
 			Duration:         time.Second,
 			TestsPerDuration: requestsPerSecond,
 		},
-		SeedGrowthAmount: seedGrowthAmount,
+		SeedGrowthAmount:  seedGrowthAmount,
+		EnableRequestRamp: enableRequestRamp,
 		TestConfig: load_test.TestConfig{
 			MaxFileSize:  maxFileSize,
 			MaxFileCount: maxFileCount,
+			FileSizeRamp: enableFileRamp,
 		},
 		SchedulerChan: make(chan load_test.Test, 50000),       // Tests scheduled to run asap are sent here
 		ResultChan:    make(chan load_test.TestResult, 15000), // Results of tests are sent here

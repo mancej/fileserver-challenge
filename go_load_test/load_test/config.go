@@ -1,7 +1,7 @@
 package load_test
 
 const (
-	MaxFailuresBeforeExit = 2000
+	MaxFailuresBeforeExit = 1000
 )
 
 type TestEndpointConfig struct {

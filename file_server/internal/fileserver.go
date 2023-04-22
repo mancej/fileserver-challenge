@@ -14,8 +14,8 @@ import (
 
 // You may NOT change anything in this file (or any of the go files)
 const (
-	maxConnections        = 10
-	baseLatencyPerRequest = 330 // # of ms added for all requests
+	maxConnections        = 15
+	baseLatencyPerRequest = 333 // # of ms added for all requests
 	port                  = 1234
 )
 
@@ -100,6 +100,7 @@ func (fs *FileServer) HandleGet(response http.ResponseWriter, request *http.Requ
 	fs.inProcess.Add(filePath)
 	// Read file from FS
 	file, err := os.Open(filePath)
+	defer file.Close()
 	if err != nil {
 		log.Errorf("Failed to read file: %s. Error: %+v", filePath, err)
 		fs.WriteResponseBody(response, err.Error())
@@ -123,7 +124,7 @@ func (fs *FileServer) HandleGet(response http.ResponseWriter, request *http.Requ
 	// Copy data
 	written, err := io.Copy(response, file)
 	if err != nil {
-		log.Errorf("Failed to read file bytes for file: %s. Error: %+v", filePath, err)
+		log.Errorf("Get failed to read file bytes for file: %s. Error: %+v", filePath, err)
 		response.WriteHeader(http.StatusInternalServerError)
 		fs.WriteResponseBody(response, err.Error())
 		return
@@ -169,6 +170,7 @@ func (fs *FileServer) HandlePut(response http.ResponseWriter, request *http.Requ
 
 	// Open file for writing
 	file, err := os.Create(filePath)
+	defer file.Close()
 	if err != nil {
 		log.Errorf("Failed to create file: %s. Error: %+v", filePath, err)
 		response.WriteHeader(http.StatusInternalServerError)
@@ -182,6 +184,7 @@ func (fs *FileServer) HandlePut(response http.ResponseWriter, request *http.Requ
 		log.Errorf("Failed to read file bytes for file: %s. Error: %+v", filePath, err)
 		response.WriteHeader(http.StatusInternalServerError)
 		fs.WriteResponseBody(response, err.Error())
+		_ = os.Remove(filePath)
 		return
 	}
 
@@ -190,6 +193,7 @@ func (fs *FileServer) HandlePut(response http.ResponseWriter, request *http.Requ
 		log.Errorf("Invalid number of bytes written to response. Expected %d, got %d", request.ContentLength, written)
 		response.WriteHeader(http.StatusInternalServerError)
 		fs.WriteResponseBody(response, "Write corruption, please retry.")
+		_ = os.Remove(filePath)
 		return
 	}
 

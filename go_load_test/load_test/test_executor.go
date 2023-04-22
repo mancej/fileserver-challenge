@@ -20,6 +20,7 @@ type TestExecutor struct {
 	inProcessLock sync.RWMutex
 	results       chan TestResult
 	endpointCfg   TestEndpointConfig
+	fileSizeLock  sync.RWMutex
 }
 
 func NewTestExecutor(client *http.Client, config TestEndpointConfig, testConfig TestConfig, resultsChan chan TestResult) *TestExecutor {
@@ -58,7 +59,7 @@ func (tr *TestExecutor) PutFile(fileName string) {
 		tr.inProcess.Delete(fileName)
 		tr.inProcessLock.Unlock()
 	}()
-	fileSize := rand.Int63n(tr.maxFileSize)
+	fileSize := tr.randomFileSize()
 	fileBytes := make([]byte, fileSize)
 	_, err := crand.Read(fileBytes)
 	if err != nil {
@@ -116,7 +117,7 @@ func (tr *TestExecutor) CreateFile(fileName string) {
 		tr.inProcess.Delete(fileName)
 		tr.inProcessLock.Unlock()
 	}()
-	fileSize := rand.Int63n(tr.maxFileSize)
+	fileSize := rand.Int63n(tr.maxFileSize) + 1
 	fileBytes := make([]byte, fileSize)
 	_, err := crand.Read(fileBytes)
 	if err != nil {
@@ -244,7 +245,7 @@ func (tr *TestExecutor) ConsistencyCheck(fileName string) {
 		tr.inProcessLock.Unlock()
 	}()
 
-	fileSize := rand.Int63n(tr.maxFileSize)
+	fileSize := tr.randomFileSize()
 	fileBytes := make([]byte, fileSize)
 	_, err := crand.Read(fileBytes)
 	if err != nil {
@@ -421,6 +422,25 @@ func (tr *TestExecutor) ConsistencyCheck(fileName string) {
 		err:      nil,
 		failed:   false,
 	}
+}
+
+func (tr *TestExecutor) SetMaxFileSize(maxSize int64) {
+	tr.fileSizeLock.Lock()
+	defer tr.fileSizeLock.Unlock()
+	tr.maxFileSize = maxSize
+}
+
+func (tr *TestExecutor) GetMaxFileSize() int64 {
+	tr.fileSizeLock.RLock()
+	defer tr.fileSizeLock.RUnlock()
+	return tr.maxFileSize
+}
+
+// Returns a random file size that is less than the curren set maxFileSize
+func (tr *TestExecutor) randomFileSize() int64 {
+	tr.fileSizeLock.RLock()
+	defer tr.fileSizeLock.RUnlock()
+	return rand.Int63n(tr.maxFileSize) + 1
 }
 
 func (tr *TestExecutor) buildPath(fileName string) string {

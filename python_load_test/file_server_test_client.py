@@ -62,7 +62,7 @@ class FileServerTestClient:
         # return the file contents
         logging.debug(f"GETTING file: {file_name}")
         try:
-            response = self._session.get(f"{self.address}/{self.path_prefix}/{file_name}", timeout=1.25, headers=self._headers)
+            response = self._session.get(f"{self.address}/{self.path_prefix}/{file_name}", timeout=2.25, headers=self._headers)
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             self._in_process.remove(file_name)
             return TestResult(InvalidResponse(status_code=503, text=f"Server overloaded, request timeout or failed "
@@ -79,7 +79,7 @@ class FileServerTestClient:
         # Delete the file
         logging.debug(f"DELETING file: {file_name}")
         try:
-            response = self._session.delete(f"{self.address}/{self.path_prefix}/{file_name}", timeout=1.25, headers=self._headers)
+            response = self._session.delete(f"{self.address}/{self.path_prefix}/{file_name}", timeout=2.25, headers=self._headers)
             if 200 <= response.status_code < 300:
                 self._tracked_files.remove(file_name)
         except requests.exceptions.Timeout as e:

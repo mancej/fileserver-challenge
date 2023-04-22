@@ -1,6 +1,7 @@
 package load_test
 
 import (
+	log "github.com/sirupsen/logrus"
 	"net/http"
 	"time"
 )
@@ -32,39 +33,61 @@ func (tr *TestRunner) Run() {
 			MaxConnsPerHost:     0,
 			IdleConnTimeout:     0,
 		},
-		Timeout: time.Second * 2,
+		Timeout: time.Second * 3,
 	}
 	exec := NewTestExecutor(client, tr.cfg.EndpointCfg, tr.cfg.TestConfig, tr.cfg.ResultChan)
+
+	lastFileSizeUpdate := time.Now()
+
+	// Ramp maximum file size for writes
+	go func() {
+		if tr.cfg.FileSizeRamp {
+			for {
+				if time.Now().Sub(lastFileSizeUpdate) > time.Second*15 {
+					// Double max file size every 15 seconds.
+					fileSize := exec.GetMaxFileSize() * 2
+					exec.SetMaxFileSize(fileSize)
+					log.Infof("Increasing max file size due to ramp. New max size is: %d bytes", fileSize)
+					lastFileSizeUpdate = time.Now()
+				}
+				time.Sleep(time.Second)
+			}
+		}
+	}()
 
 	keepRunning := true
 	var test Test
 	for keepRunning {
 		var funcToRun func()
 		test, keepRunning = <-tr.cfg.ScheduleChan
-
 		if !keepRunning {
 			break
 		}
 
-		if test.TestType == GET {
+		switch test.TestType {
+		case GET:
 			funcToRun = func() {
 				exec.GetFile(test.fileName)
 			}
-		} else if test.TestType == PUT {
+		case PUT:
 			funcToRun = func() {
 				exec.PutFile(test.fileName)
 			}
-		} else if test.TestType == DELETE {
+		case DELETE:
 			funcToRun = func() {
 				exec.DeleteFile(test.fileName)
 			}
-		} else if test.TestType == CREATE {
+		case CREATE:
 			funcToRun = func() {
 				exec.CreateFile(test.fileName)
 			}
-		} else if test.TestType == CONSISTENCY {
+		case CONSISTENCY:
 			funcToRun = func() {
 				exec.ConsistencyCheck(test.fileName)
+			}
+		default:
+			funcToRun = func() {
+				exec.GetFile(test.fileName)
 			}
 		}
 
