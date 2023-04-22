@@ -23,7 +23,7 @@ start-tail: start tail  ## Stop, restart docker stack, and tail load test logs
 
 .PHONY: clean
 clean: ## Stop & clean docker stack
-	docker-compose stop  && docker-compose rm -f && docker-compose build --no-cache --force-rm --parallel
+	docker-compose stop  && docker-compose rm -f && docker-compose build --force-rm --parallel
 
 .PHONY: stop
 stop:  ## Stop docker stack

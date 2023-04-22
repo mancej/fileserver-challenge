@@ -395,7 +395,7 @@ func (tr *TestExecutor) ConsistencyCheck(fileName string) {
 			fileName: fileName,
 			testType: CONSISTENCY,
 			response: response,
-			message:  "Error performing GET for deleted file in consistent test.",
+			message:  fmt.Sprintf("Error performing GET for deleted file in consistent test. file: %s. Error: %s", fileName, err.Error()),
 			err:      err,
 			failed:   true,
 		}

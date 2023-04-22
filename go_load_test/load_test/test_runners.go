@@ -33,7 +33,7 @@ func (tr *TestRunner) Run() {
 			MaxConnsPerHost:     0,
 			IdleConnTimeout:     0,
 		},
-		Timeout: time.Second * 3,
+		Timeout: time.Second * 30,
 	}
 	exec := NewTestExecutor(client, tr.cfg.EndpointCfg, tr.cfg.TestConfig, tr.cfg.ResultChan)
 
@@ -43,7 +43,7 @@ func (tr *TestRunner) Run() {
 	go func() {
 		if tr.cfg.FileSizeRamp {
 			for {
-				if time.Now().Sub(lastFileSizeUpdate) > time.Second*15 {
+				if time.Now().Sub(lastFileSizeUpdate) > time.Second*20 {
 					// Double max file size every 15 seconds.
 					fileSize := exec.GetMaxFileSize() * 2
 					exec.SetMaxFileSize(fileSize)

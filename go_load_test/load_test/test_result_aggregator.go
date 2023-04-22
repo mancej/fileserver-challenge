@@ -102,10 +102,8 @@ func (tr *TestResults) PrintResults() {
 	headerFmt := color.New(color.FgGreen, color.Underline).SprintfFunc()
 	columnFmt := color.New(color.FgYellow).SprintfFunc()
 	// Round to 1 decimal place
-	throughput := math.Round(float64(tr.numRequests)/time.Now().Sub(tr.startTime).Seconds()*10) / 10
 	currentThroughput := tr.numLastInterval
 	currentSuccessful := tr.numSuccessLastInterval
-	successThroughput := math.Round(float64(tr.numSuccess)/time.Now().Sub(tr.startTime).Seconds()*10) / 10
 	tbl := table.New("Metric", "Count", "")
 	tbl.WithHeaderFormatter(headerFmt).WithFirstColumnFormatter(columnFmt)
 
@@ -124,8 +122,6 @@ func (tr *TestResults) PrintResults() {
 	tbl.AddRow("Current req/sec", currentThroughput, "")
 	tbl.AddRow("Current Successful req/sec", currentSuccessful, "")
 	tbl.AddRow("Max Successful req/sec", tr.maxSeenSuccessfulRequestPerSec, "")
-	tbl.AddRow("Average req/sec", throughput, "")
-	tbl.AddRow("Average Successful req/sec", successThroughput, "")
 	tbl.Print()
 
 	tr.lastPrintedNumFailure = tr.numFailure

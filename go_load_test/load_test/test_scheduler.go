@@ -105,7 +105,7 @@ func (ts *TestScheduler) Run() {
 
 // ScheduleTests schedules tests on the channel if we haven't met our quota based on seed configs
 func (ts *TestScheduler) ScheduleTests() {
-	targetSeed := ts.cfg.SeedCadence.TestsPerDuration + (ts.growthFactor * int(ts.cfg.SeedGrowthAmount)) + ts.rampAmount
+	targetSeed := ts.cfg.SeedCadence.TestsPerDuration + int(float64(ts.growthFactor)*float64(ts.cfg.SeedGrowthAmount)) + ts.rampAmount
 	seedCount := targetSeed // num in this seed that need to be scheduled.
 	startTime := time.Now()
 
@@ -135,7 +135,7 @@ func (ts *TestScheduler) ScheduleTests() {
 				ts.rampFactor++
 				ts.lastRamp = time.Now()
 			}
-			ts.rampAmount = ts.rampAmount + int(ts.cfg.SeedGrowthAmount)*ts.rampFactor
+			ts.rampAmount = ts.rampAmount + int(float64(ts.cfg.SeedGrowthAmount)*float64(ts.rampFactor))
 		}
 
 		log.Infof("Now scheduling: %d req/sec", targetSeed)
