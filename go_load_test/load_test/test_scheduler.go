@@ -32,17 +32,19 @@ type TestCadenceConfig struct {
 type TestConfig struct {
 	MaxFileSize  int64
 	MaxFileCount int
+	FileSizeRamp bool
 }
 
 type TestSchedulerConfig struct {
-	EndpointCfg      TestEndpointConfig
-	SeedCadence      TestCadenceConfig
-	SeedGrowthAmount int
-	TestConfig       TestConfig
-	SchedulerChan    chan Test
-	ResultChan       chan TestResult
-	FailureChan      chan TestResult // All test failures are published here.
-	ShutdownChan     chan bool
+	EndpointCfg       TestEndpointConfig
+	SeedCadence       TestCadenceConfig
+	SeedGrowthAmount  float64
+	EnableRequestRamp bool
+	TestConfig        TestConfig
+	SchedulerChan     chan Test
+	ResultChan        chan TestResult
+	FailureChan       chan TestResult // All test failures are published here.
+	ShutdownChan      chan bool
 }
 
 type TestScheduler struct {
@@ -56,6 +58,9 @@ type TestScheduler struct {
 	trackedFiles    FileSet
 	trackedFileLock sync.RWMutex
 	startTime       time.Time
+	rampAmount      int
+	rampFactor      int
+	lastRamp        time.Time
 }
 
 // NewTestScheduler - Tests are immediately scheduled at the seed cadence, and will grow at a rate of seed + repeating growth cadence.
@@ -73,30 +78,38 @@ func NewTestScheduler(cfg TestSchedulerConfig) TestScheduler {
 		tests:        tests,
 		trackedFiles: make(FileSet),
 		startTime:    time.Now(),
+		rampFactor:   1,
+		rampAmount:   0,
+		lastRamp:     time.Now(),
 	}
 }
 
 func (ts *TestScheduler) Run() {
 	keepRunning := true
 	ts.seedResetTime = time.Now().Add(ts.cfg.SeedCadence.Duration)
-
 	go ts.MergeFailedTestResults()
 
 	for keepRunning {
+		// Schedule tests.
 		ts.ScheduleTests()
+
 		select {
 		case _, keepRunning = <-ts.cfg.ShutdownChan:
 		default:
 		}
 		time.Sleep(time.Microsecond * 50)
 	}
+
+	close(ts.cfg.SchedulerChan)
 }
 
 // ScheduleTests schedules tests on the channel if we haven't met our quota based on seed configs
 func (ts *TestScheduler) ScheduleTests() {
-	targetSeed := ts.cfg.SeedCadence.TestsPerDuration + (ts.growthFactor * ts.cfg.SeedGrowthAmount)
+	targetSeed := ts.cfg.SeedCadence.TestsPerDuration + int(float64(ts.growthFactor)*float64(ts.cfg.SeedGrowthAmount)) + ts.rampAmount
+	seedCount := targetSeed // num in this seed that need to be scheduled.
 	startTime := time.Now()
-	for ts.numScheduled < targetSeed {
+
+	for ts.numScheduled < seedCount {
 		ts.cfg.SchedulerChan <- ts.GetTestFunc()
 		ts.numScheduled++
 		ts.totalScheduled++
@@ -104,7 +117,7 @@ func (ts *TestScheduler) ScheduleTests() {
 
 		// Spaces out scheduling of requests over the duration the seed duration so we don't
 		// schedule + run all N requests instantly. This ensures a smooth rate of scheduled / executed tests.
-		seedsLeft := targetSeed - ts.numScheduled
+		seedsLeft := seedCount - ts.numScheduled
 		if seedsLeft > 0 {
 			time.Sleep(remainingTime / time.Duration(seedsLeft))
 		}
@@ -113,10 +126,19 @@ func (ts *TestScheduler) ScheduleTests() {
 	// If we are after our reset time, reset to a new time, and reset num scheduled to whatever's left, or 0
 	if time.Now().UnixMicro() > ts.seedResetTime.UnixMicro() {
 		ts.seedResetTime = time.Now().Add(ts.cfg.SeedCadence.Duration)
-		ts.numScheduled = targetSeed - ts.numScheduled
+		ts.numScheduled = seedCount - ts.numScheduled
 		ts.growthFactor++
-		log.Infof("Now scheduling: %d req/sec", ts.cfg.SeedCadence.TestsPerDuration+(ts.growthFactor*ts.cfg.SeedGrowthAmount))
-		log.Infof("Num tracked files: %d", len(ts.trackedFiles))
+
+		// If request ramp is eanbled, ramp requests rates
+		if ts.cfg.EnableRequestRamp {
+			if time.Now().Sub(ts.lastRamp) > time.Minute {
+				ts.rampFactor++
+				ts.lastRamp = time.Now()
+			}
+			ts.rampAmount = ts.rampAmount + int(float64(ts.cfg.SeedGrowthAmount)*float64(ts.rampFactor))
+		}
+
+		log.Infof("Now scheduling: %d req/sec", targetSeed)
 	}
 
 }
@@ -134,13 +156,14 @@ func (ts *TestScheduler) GetTestFunc() Test {
 	if createNewFile {
 		testToRun.fileName = RandStringBytes(15)
 		// Give 2% chance to execute consistency test, or a higher % chance the more tracked files there are
-		// If the load test just started, only run consistency tests for the first 15 seconds.
-		bonus := ts.cfg.TestConfig.MaxFileCount / (ts.cfg.TestConfig.MaxFileCount - len(ts.trackedFiles) + 1)
-		runConsistencyTest := rand.Intn(100)+bonus >= 98 || time.Now().Sub(ts.startTime) < time.Second*15
+		// If the load test just started, only run consistency tests for the first 5 seconds.
+		bonus := Min(ts.cfg.TestConfig.MaxFileCount/(ts.cfg.TestConfig.MaxFileCount-len(ts.trackedFiles)+1), 8)
+		runConsistencyTest := rand.Intn(100)+bonus >= 98 || time.Now().Sub(ts.startTime) < time.Second*5
 		if runConsistencyTest {
 			// This tests is 4 requests total, so add 3 extra.
 			ts.numScheduled += 3
 			testToRun.TestType = CONSISTENCY
+			log.Infof("Scheduling consistency test for file: %s", testToRun.fileName)
 		} else {
 			testToRun.TestType = CREATE
 			ts.trackedFiles.Add(testToRun.fileName)

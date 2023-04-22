@@ -20,6 +20,7 @@ type TestExecutor struct {
 	inProcessLock sync.RWMutex
 	results       chan TestResult
 	endpointCfg   TestEndpointConfig
+	fileSizeLock  sync.RWMutex
 }
 
 func NewTestExecutor(client *http.Client, config TestEndpointConfig, testConfig TestConfig, resultsChan chan TestResult) *TestExecutor {
@@ -58,7 +59,7 @@ func (tr *TestExecutor) PutFile(fileName string) {
 		tr.inProcess.Delete(fileName)
 		tr.inProcessLock.Unlock()
 	}()
-	fileSize := rand.Int63n(tr.maxFileSize)
+	fileSize := tr.randomFileSize()
 	fileBytes := make([]byte, fileSize)
 	_, err := crand.Read(fileBytes)
 	if err != nil {
@@ -116,7 +117,7 @@ func (tr *TestExecutor) CreateFile(fileName string) {
 		tr.inProcess.Delete(fileName)
 		tr.inProcessLock.Unlock()
 	}()
-	fileSize := rand.Int63n(tr.maxFileSize)
+	fileSize := rand.Int63n(tr.maxFileSize) + 1
 	fileBytes := make([]byte, fileSize)
 	_, err := crand.Read(fileBytes)
 	if err != nil {
@@ -244,7 +245,7 @@ func (tr *TestExecutor) ConsistencyCheck(fileName string) {
 		tr.inProcessLock.Unlock()
 	}()
 
-	fileSize := rand.Int63n(tr.maxFileSize)
+	fileSize := tr.randomFileSize()
 	fileBytes := make([]byte, fileSize)
 	_, err := crand.Read(fileBytes)
 	if err != nil {
@@ -287,6 +288,18 @@ func (tr *TestExecutor) ConsistencyCheck(fileName string) {
 		return
 	}
 
+	if response.StatusCode != http.StatusCreated {
+		tr.results <- TestResult{
+			fileName: fileName,
+			testType: CONSISTENCY,
+			response: response,
+			message:  fmt.Sprintf("PUT failed due to unexpected status code, got: %d but expected 201.", response.StatusCode),
+			err:      err,
+			failed:   true,
+		}
+		return
+	}
+
 	// Fetch immediately after write, verify data is consistent.
 	response, err = tr.client.Get(tr.buildPath(fileName))
 	if err != nil {
@@ -301,13 +314,25 @@ func (tr *TestExecutor) ConsistencyCheck(fileName string) {
 		return
 	}
 
+	if response.StatusCode != http.StatusOK {
+		tr.results <- TestResult{
+			fileName: fileName,
+			testType: CONSISTENCY,
+			response: response,
+			message:  fmt.Sprintf("GET failed due to unexpected status code, got: %d but expected 200.", response.StatusCode),
+			err:      err,
+			failed:   true,
+		}
+		return
+	}
+
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		tr.results <- TestResult{
 			fileName: fileName,
 			testType: CONSISTENCY,
 			response: response,
-			message:  "Error decoding response body",
+			message:  fmt.Sprintf("Error decoding response body: %s", err.Error()),
 			err:      err,
 			failed:   true,
 		}
@@ -352,13 +377,25 @@ func (tr *TestExecutor) ConsistencyCheck(fileName string) {
 		return
 	}
 
+	if response.StatusCode != http.StatusOK {
+		tr.results <- TestResult{
+			fileName: fileName,
+			testType: CONSISTENCY,
+			response: response,
+			message:  fmt.Sprintf("DELETE failed due to unexpected status code, got: %d but expected 200.", response.StatusCode),
+			err:      err,
+			failed:   true,
+		}
+		return
+	}
+
 	response, err = tr.client.Get(tr.buildPath(fileName))
 	if err != nil {
 		tr.results <- TestResult{
 			fileName: fileName,
 			testType: CONSISTENCY,
 			response: response,
-			message:  "Error performing GET for deleted file in consistent test.",
+			message:  fmt.Sprintf("Error performing GET for deleted file in consistent test. file: %s. Error: %s", fileName, err.Error()),
 			err:      err,
 			failed:   true,
 		}
@@ -385,6 +422,25 @@ func (tr *TestExecutor) ConsistencyCheck(fileName string) {
 		err:      nil,
 		failed:   false,
 	}
+}
+
+func (tr *TestExecutor) SetMaxFileSize(maxSize int64) {
+	tr.fileSizeLock.Lock()
+	defer tr.fileSizeLock.Unlock()
+	tr.maxFileSize = maxSize
+}
+
+func (tr *TestExecutor) GetMaxFileSize() int64 {
+	tr.fileSizeLock.RLock()
+	defer tr.fileSizeLock.RUnlock()
+	return tr.maxFileSize
+}
+
+// Returns a random file size that is less than the curren set maxFileSize
+func (tr *TestExecutor) randomFileSize() int64 {
+	tr.fileSizeLock.RLock()
+	defer tr.fileSizeLock.RUnlock()
+	return rand.Int63n(tr.maxFileSize) + 1
 }
 
 func (tr *TestExecutor) buildPath(fileName string) string {
