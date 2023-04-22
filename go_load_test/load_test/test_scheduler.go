@@ -67,7 +67,7 @@ type TestScheduler struct {
 // I.E if seed is 5 req/s and growth is 1 req/sec, tests will schedule at 5/sec, then 1 sec later, 6/sec, then
 // one sec later, 7/sec, etc.
 func NewTestScheduler(cfg TestSchedulerConfig) TestScheduler {
-	tests := []TestType{PUT, DELETE}
+	tests := []TestType{PUT, PUT, DELETE}
 	for i := 0; i < 75; i++ {
 		tests = append(tests, GET)
 	}

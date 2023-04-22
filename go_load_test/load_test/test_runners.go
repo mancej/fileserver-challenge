@@ -43,9 +43,9 @@ func (tr *TestRunner) Run() {
 	go func() {
 		if tr.cfg.FileSizeRamp {
 			for {
-				if time.Now().Sub(lastFileSizeUpdate) > time.Second*20 {
+				if time.Now().Sub(lastFileSizeUpdate) > time.Second*15 {
 					// Double max file size every 15 seconds.
-					fileSize := exec.GetMaxFileSize() * 2
+					fileSize := int64(float64(exec.GetMaxFileSize()) * 1.5)
 					exec.SetMaxFileSize(fileSize)
 					log.Infof("Increasing max file size due to ramp. New max size is: %d bytes", fileSize)
 					lastFileSizeUpdate = time.Now()
