@@ -10,8 +10,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
-          cpus: "0.25"
+          memory: 64M
+          cpus: "0.1"
       replicas: 1
     volumes:
       - ./.fileserver/data:/tmp/
@@ -26,7 +26,7 @@ services:
       resources:
         limits:
           memory: 64M
-          cpus: "0.15"
+          cpus: "0.1"
       replicas: 1
     volumes:
       - ./.fileserver/data:/tmp/
@@ -41,7 +41,7 @@ services:
       resources:
         limits:
           memory: 64M
-          cpus: "0.15"
+          cpus: "0.1"
       replicas: 1
     volumes:
       - ./.fileserver/data:/tmp/
@@ -56,7 +56,7 @@ services:
       resources:
         limits:
           memory: 64M
-          cpus: "0.15"
+          cpus: "0.1"
       replicas: 1
     volumes:
       - ./.fileserver/data:/tmp/
@@ -68,6 +68,7 @@ services:
       context: proxy/
     ports:
       - "8080:8080"
+      - "8081:8081"
 #    environment:
 #      - FILE_SERVER_HOST=file_server
 #      - FILE_SERVER_PORT=1234
@@ -78,8 +79,7 @@ services:
       - FILE_SERVER_PORT=1234,1234,1234,1234
       - FILE_SERVER_PROTO=http,http,http,http
       - PROXY_MODE=advanced
-      - CACHE_SIZE=2200000000
-
+      - CACHE_SIZE=2100000000
     deploy:
       resources:
         limits:
@@ -102,8 +102,8 @@ services:
     build:
       context: go_load_test/
     environment:
-      - FILE_SERVER_HOST=file-server                  # Point this to your application middleware
-      - FILE_SERVER_PORT=1234                   # Point this to your application middleware (port will change)
+      - FILE_SERVER_HOST=proxy                  # Point this to your application middleware
+      - FILE_SERVER_PORT=8080                   # Point this to your application middleware (port will change)
       - FILE_SERVER_PROTO=http                  # Point this to your application middleware
       - FILE_SERVER_PATH_PREFIX=api/fileserver
       - REQUESTS_PER_SECOND=1                   # Base requests/sec the load test will begin on.
@@ -112,11 +112,12 @@ services:
       - ENABLE_FILE_RAMP=true                   # If true, every 15 seconds the max possible file size written increases by 50%
       - MAX_FILE_COUNT=3000                     # Recommend 2-5x total REQUESTS_PER_SECOND (consider seed in this calculation)
       - MAX_FILE_SIZE=1024                      # 1KB, but could be set to ANYTHING in live tests
+#      - MAX_FILE_SIZE=1024000
       - TERM=xterm-256color
     volumes:
       - ./.fileserver/data:/tmp/                # Error logs are written to this data dir under load_test.log
     depends_on:
-      - file_server
+      - proxy
 
 #  python_load_tester:
 #    container_name: load-tester
