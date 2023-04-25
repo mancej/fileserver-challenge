@@ -1,10 +1,14 @@
 package load_test
 
-import "net/http"
+import (
+	"net/http"
+	"time"
+)
 
 type TestResult struct {
 	response *http.Response
 	testType TestType
+	duration time.Duration
 	fileName string
 	message  string
 	err      error

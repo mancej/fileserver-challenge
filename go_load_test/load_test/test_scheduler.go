@@ -30,9 +30,10 @@ type TestCadenceConfig struct {
 }
 
 type TestConfig struct {
-	MaxFileSize  int64
-	MaxFileCount int
-	FileSizeRamp bool
+	MaxFileSize           int64
+	MaxFileCount          int
+	FileSizeRamp          bool
+	UploadRandomLargeFile bool
 }
 
 type TestSchedulerConfig struct {
@@ -44,18 +45,19 @@ type TestSchedulerConfig struct {
 	SchedulerChan     chan Test
 	ResultChan        chan TestResult
 	FailureChan       chan TestResult // All test failures are published here.
+	SuccessChan       chan TestResult // All test successes published here.
 	ShutdownChan      chan bool
 }
 
 type TestScheduler struct {
-	cfg             TestSchedulerConfig
-	scheduleLock    sync.Mutex
-	seedResetTime   time.Time
-	numScheduled    int
-	totalScheduled  int64
-	growthFactor    int // each time growth cadence is met, growth factor increases by 1. Total growth = growth config * growth factor
-	tests           []TestType
-	trackedFiles    FileSet
+	cfg            TestSchedulerConfig
+	seedResetTime  time.Time
+	numScheduled   int
+	totalScheduled int64
+	growthFactor   int // each time growth cadence is met, growth factor increases by 1. Total growth = growth config * growth factor
+	tests          []TestType
+	trackedFiles   FileSet
+
 	trackedFileLock sync.RWMutex
 	startTime       time.Time
 	rampAmount      int
@@ -67,7 +69,7 @@ type TestScheduler struct {
 // I.E if seed is 5 req/s and growth is 1 req/sec, tests will schedule at 5/sec, then 1 sec later, 6/sec, then
 // one sec later, 7/sec, etc.
 func NewTestScheduler(cfg TestSchedulerConfig) TestScheduler {
-	tests := []TestType{PUT, PUT, DELETE}
+	tests := []TestType{PUT, DELETE}
 	for i := 0; i < 75; i++ {
 		tests = append(tests, GET)
 	}
@@ -88,6 +90,7 @@ func (ts *TestScheduler) Run() {
 	keepRunning := true
 	ts.seedResetTime = time.Now().Add(ts.cfg.SeedCadence.Duration)
 	go ts.MergeFailedTestResults()
+	go ts.MergeSuccessfulTestResults()
 
 	for keepRunning {
 		// Schedule tests.
@@ -110,16 +113,21 @@ func (ts *TestScheduler) ScheduleTests() {
 	startTime := time.Now()
 
 	for ts.numScheduled < seedCount {
+		scheduleStart := time.Now()
 		ts.cfg.SchedulerChan <- ts.GetTestFunc()
 		ts.numScheduled++
 		ts.totalScheduled++
 		remainingTime := ts.cfg.SeedCadence.Duration - time.Now().Sub(startTime) // remaining time before reset
 
+		// Calculates time it takes to schedule a job.
+		scheduleDur := time.Now().Sub(scheduleStart)
+
 		// Spaces out scheduling of requests over the duration the seed duration so we don't
 		// schedule + run all N requests instantly. This ensures a smooth rate of scheduled / executed tests.
+		// also removes a flat 50 microseconds to account for time for this calculation and provide a buffer
 		seedsLeft := seedCount - ts.numScheduled
 		if seedsLeft > 0 {
-			time.Sleep(remainingTime / time.Duration(seedsLeft))
+			time.Sleep((remainingTime / time.Duration(seedsLeft)) - scheduleDur - time.Microsecond*50)
 		}
 	}
 
@@ -139,6 +147,8 @@ func (ts *TestScheduler) ScheduleTests() {
 		}
 
 		log.Infof("Now scheduling: %d req/sec", targetSeed)
+		log.Infof("Schedule Chan length: %d", len(ts.cfg.SchedulerChan))
+		log.Infof("Result Chan Length: %d", len(ts.cfg.ResultChan))
 	}
 
 }
@@ -147,12 +157,10 @@ func (ts *TestScheduler) ScheduleTests() {
 
 // GetTestFunc selects a psuedo random test function to run
 func (ts *TestScheduler) GetTestFunc() Test {
-	rand.Seed(time.Now().UnixNano())
+	//rand.Seed(time.Now().UnixNano())
 	createNewFile := rand.Intn(ts.cfg.TestConfig.MaxFileCount) > len(ts.trackedFiles)
 	var testToRun = Test{}
 
-	ts.trackedFileLock.RLock()
-	defer ts.trackedFileLock.RUnlock()
 	if createNewFile {
 		testToRun.fileName = RandStringBytes(15)
 		// Give 2% chance to execute consistency test, or a higher % chance the more tracked files there are
@@ -165,15 +173,20 @@ func (ts *TestScheduler) GetTestFunc() Test {
 			testToRun.TestType = CONSISTENCY
 			log.Infof("Scheduling consistency test for file: %s", testToRun.fileName)
 		} else {
+			// only add to tracked after a success is returned on success chan. This prevents a quickly scheduled GET from
+			// failing with 404 after a 429 was returned on CREATE
 			testToRun.TestType = CREATE
-			ts.trackedFiles.Add(testToRun.fileName)
 		}
 	} else {
 		testId := rand.Intn(len(ts.tests))
+		ts.trackedFileLock.RLock()
 		testToRun.fileName = ts.trackedFiles.RandomFile()
+		ts.trackedFileLock.RUnlock()
 		testToRun.TestType = ts.tests[testId]
 		if testToRun.TestType == DELETE {
+			ts.trackedFileLock.Lock()
 			ts.trackedFiles.Delete(testToRun.fileName)
+			ts.trackedFileLock.Unlock()
 		}
 	}
 
@@ -207,6 +220,24 @@ func (ts *TestScheduler) MergeFailedTestResults() {
 			if result.TestType() == CONSISTENCY {
 				ts.trackedFiles.Delete(result.FileName())
 			}
+		}
+
+		ts.trackedFileLock.Unlock()
+	}
+}
+
+// MergeSuccessfulTestResults listens to failed tests and updates trackedFiles based on results.
+func (ts *TestScheduler) MergeSuccessfulTestResults() {
+	// Cleanup tracked files that were write / delete failures
+	for {
+		result, hasMore := <-ts.cfg.SuccessChan
+		if !hasMore {
+			break
+		}
+
+		ts.trackedFileLock.Lock()
+		if result.TestType() == CREATE {
+			ts.trackedFiles.Add(result.FileName())
 		}
 		ts.trackedFileLock.Unlock()
 	}

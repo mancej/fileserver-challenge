@@ -30,6 +30,7 @@ func main() {
 	}
 
 	log.SetOutput(file)
+	log.SetLevel(log.InfoLevel)
 
 	host := load_test.GetEnv("FILE_SERVER_HOST", "localhost")
 	port := load_test.GetEnv("FILE_SERVER_PORT", "1234")
@@ -39,8 +40,9 @@ func main() {
 	maxFileSize, _ := strconv.ParseInt(load_test.GetEnv("MAX_FILE_SIZE", "1024"), 10, 64)
 	requestsPerSecond, _ := strconv.Atoi(load_test.GetEnv("REQUESTS_PER_SECOND", "1"))
 	seedGrowthAmount, _ := strconv.ParseFloat(load_test.GetEnv("SEED_GROWTH_AMOUNT", "1.0"), 32)
-	enableRequestRamp, _ := strconv.ParseBool(load_test.GetEnv("ENABLE_FILE_RAMP", "true"))
-	enableFileRamp, _ := strconv.ParseBool(load_test.GetEnv("ENABLE_REQUEST_RAMP", "true"))
+	enableRequestRamp, _ := strconv.ParseBool(load_test.GetEnv("ENABLE_REQUEST_RAMP", "true"))
+	enableFileRamp, _ := strconv.ParseBool(load_test.GetEnv("ENABLE_FILE_RAMP", "true"))
+	uploadRandomLargeFile, _ := strconv.ParseBool(load_test.GetEnv("RANDOMLY_UPLOAD_LARGE_FILES", "true"))
 
 	cfg := load_test.TestSchedulerConfig{
 		EndpointCfg: load_test.TestEndpointConfig{
@@ -56,14 +58,16 @@ func main() {
 		SeedGrowthAmount:  seedGrowthAmount,
 		EnableRequestRamp: enableRequestRamp,
 		TestConfig: load_test.TestConfig{
-			MaxFileSize:  maxFileSize,
-			MaxFileCount: maxFileCount,
-			FileSizeRamp: enableFileRamp,
+			MaxFileSize:           maxFileSize,
+			MaxFileCount:          maxFileCount,
+			FileSizeRamp:          enableFileRamp,
+			UploadRandomLargeFile: uploadRandomLargeFile,
 		},
 		SchedulerChan: make(chan load_test.Test, 50000),       // Tests scheduled to run asap are sent here
 		ResultChan:    make(chan load_test.TestResult, 15000), // Results of tests are sent here
 		ShutdownChan:  make(chan bool, 1),                     // If closed, shuts down scheduling
 		FailureChan:   make(chan load_test.TestResult, 1000),  // All test failures published here
+		SuccessChan:   make(chan load_test.TestResult, 20000), // All test successes published here
 	}
 
 	testRunnerCfg := load_test.TestRunnerConfig{
