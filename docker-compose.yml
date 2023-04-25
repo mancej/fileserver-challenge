@@ -10,8 +10,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 40M
-          cpus: "0.15"
+          memory: 128M
+          cpus: "0.25"
       replicas: 1
     volumes:
       - ./.fileserver/data:/tmp/
@@ -36,8 +36,8 @@ services:
       - ENABLE_REQUEST_RAMP=true                # If true, every 1 minute, your seed growth rate doubles
       - ENABLE_FILE_RAMP=true                   # If true, every 15 seconds the max possible file size written increases by 50%
       - RANDOMLY_UPLOAD_LARGE_FILES=true        # If true, 1 out of every 100 files uploaded will be > 100MB in size
-      - MAX_FILE_COUNT=5000                     # Recommend 2-5x total REQUESTS_PER_SECOND (consider seed in this calculation)
-      - MAX_FILE_SIZE=512                       # 1KB, but could be set to ANYTHING in live tests
+      - MAX_FILE_COUNT=3000                     # Recommend 2-5x total REQUESTS_PER_SECOND (consider seed in this calculation)
+      - MAX_FILE_SIZE=1024                      # 1KB, but could be set to ANYTHING in live tests
       - TERM=xterm-256color
     volumes:
       - ./.fileserver/data:/tmp/                # Error logs are written to this data dir under load_test.log
