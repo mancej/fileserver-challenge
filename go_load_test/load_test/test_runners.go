@@ -24,16 +24,14 @@ type TestRunnerConfig struct {
 	ScheduleChan chan Test
 }
 
-// Run Listens to scheduled test chann and runs tests
+// Run Listens to scheduler test chan and runs tests
 func (tr *TestRunner) Run() {
 	client := &http.Client{
 		Transport: &http.Transport{
-			MaxIdleConns:        500,
-			MaxIdleConnsPerHost: 100,
-			MaxConnsPerHost:     0,
-			IdleConnTimeout:     0,
+			MaxIdleConns:    45000,
+			MaxConnsPerHost: 0,
 		},
-		Timeout: time.Second * 30,
+		Timeout: time.Second * 20,
 	}
 	exec := NewTestExecutor(client, tr.cfg.EndpointCfg, tr.cfg.TestConfig, tr.cfg.ResultChan)
 
@@ -44,7 +42,7 @@ func (tr *TestRunner) Run() {
 		if tr.cfg.FileSizeRamp {
 			for {
 				if time.Now().Sub(lastFileSizeUpdate) > time.Second*15 {
-					// Double max file size every 15 seconds.
+					// Increase file size by 50% every 15 seconds
 					fileSize := int64(float64(exec.GetMaxFileSize()) * 1.5)
 					exec.SetMaxFileSize(fileSize)
 					log.Infof("Increasing max file size due to ramp. New max size is: %d bytes", fileSize)

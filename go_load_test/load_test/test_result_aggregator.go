@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"github.com/rodaine/table"
+	log "github.com/sirupsen/logrus"
 	"math"
 	"sync"
 	"time"
@@ -12,33 +13,41 @@ import (
 // Listens to a channel of test results. Aggregates results + provides metrics.
 
 type TestResults struct {
-	startTime                      time.Time
-	numRequests                    int
-	numSuccess                     int
-	numGet                         int
-	numPut                         int
-	numDelete                      int
-	numConsistency                 int
-	numFailure                     int
-	numFailedConsistency           int
-	numThrottled                   int
-	intervalCount                  int
-	interval                       time.Duration
-	num500s                        int
-	httpErrors                     []string
-	otherErrors                    []string
-	resultLock                     sync.RWMutex
-	numLastInterval                int
-	numSuccessLastInterval         int
-	numGetLastInterval             int
-	numPutLastInterval             int
-	numDeleteLastInterval          int
-	numConsistencyLastInterval     int
-	numThrottledLastInterval       int
-	maxSeenSuccessfulRequestPerSec int
-	lastPrintedNumSuccess          int
-	lastPrintedNumFailure          int
-	lastPrintedNumRequests         int
+	startTime                          time.Time
+	numRequests                        int
+	numSuccess                         int
+	numGet                             int
+	numPut                             int
+	numDelete                          int
+	numConsistency                     int
+	numFailure                         int
+	numFailedConsistency               int
+	numThrottled                       int
+	intervalCount                      int
+	interval                           time.Duration
+	num500s                            int
+	httpErrors                         []string
+	otherErrors                        []string
+	resultLock                         sync.RWMutex
+	numLastInterval                    int
+	numSuccessLastInterval             int
+	numGetLastInterval                 int
+	numPutLastInterval                 int
+	numDeleteLastInterval              int
+	avgGetDurationLastInterval         time.Duration
+	avgPutDurationLastInterval         time.Duration
+	avgDeleteDurationLastInterval      time.Duration
+	avgConsistencyDurationLastInterval time.Duration
+	numConsistencyLastInterval         int
+	numThrottledLastInterval           int
+	maxSeenSuccessfulRequestPerSec     int
+	lastPrintedNumSuccess              int
+	lastPrintedNumFailure              int
+	lastPrintedNumRequests             int
+	totalGetDuration                   time.Duration
+	totalPutDuration                   time.Duration
+	totalDeleteDuration                time.Duration
+	totalConsistencyDuration           time.Duration
 }
 
 func (tr *TestResults) Merge(result TestResult) {
@@ -62,9 +71,13 @@ func (tr *TestResults) Merge(result TestResult) {
 
 	if result.WasError() {
 		if result.response != nil {
-			tr.httpErrors = append(tr.httpErrors, result.message)
+			msg := fmt.Sprintf("File: %s, Error: %s", result.FileName(), result.message)
+			log.Error(msg)
+			tr.httpErrors = append(tr.httpErrors, msg)
 		} else if result.err != nil {
-			tr.otherErrors = append(tr.otherErrors, result.err.Error())
+			msg := fmt.Sprintf("File: %s, Error: %s", result.FileName(), result.err.Error())
+			log.Error(msg)
+			tr.otherErrors = append(tr.otherErrors, msg)
 		}
 	}
 
@@ -81,11 +94,15 @@ func (tr *TestResults) Merge(result TestResult) {
 
 	if result.testType == GET {
 		tr.numGet++
+		tr.totalGetDuration += result.duration
 	} else if result.testType == PUT || result.testType == CREATE {
 		tr.numPut++
+		tr.totalPutDuration += result.duration
 	} else if result.testType == DELETE {
 		tr.numDelete++
+		tr.totalDeleteDuration += result.duration
 	} else if result.testType == CONSISTENCY {
+		tr.totalConsistencyDuration += result.duration
 		tr.numConsistency++
 		tr.numRequests += 3
 		tr.intervalCount += 3
@@ -104,24 +121,24 @@ func (tr *TestResults) PrintResults() {
 	// Round to 1 decimal place
 	currentThroughput := tr.numLastInterval
 	currentSuccessful := tr.numSuccessLastInterval
-	tbl := table.New("Metric", "Count", "")
+	tbl := table.New("Metric", "Count", "", "")
 	tbl.WithHeaderFormatter(headerFmt).WithFirstColumnFormatter(columnFmt)
 
-	tbl.AddRow("# Requests", tr.numRequests, "")
-	tbl.AddRow("# Test Success", tr.numSuccess, "")
-	tbl.AddRow("# Test Failures", tr.numFailure)
-	tbl.AddRow("# Consistency Test Success", tr.numConsistency-tr.numFailedConsistency)
-	tbl.AddRow("# Consistency Test Failures", tr.numFailedConsistency)
-	tbl.AddRow("# 5XX Errors", tr.num500s)
-	tbl.AddRow("# Throttled", tr.numThrottled)
-	tbl.AddRow("# Current THROTTLE/sec", tr.numThrottledLastInterval)
-	tbl.AddRow("# Current GET/sec", tr.numGetLastInterval)
-	tbl.AddRow("# Current PUT/sec", tr.numPutLastInterval)
-	tbl.AddRow("# Current DELETE/sec", tr.numDeleteLastInterval)
-	tbl.AddRow("# Current CONSISTENCY/sec", tr.numConsistencyLastInterval, "(4 requests per check)")
-	tbl.AddRow("Current req/sec", currentThroughput, "")
-	tbl.AddRow("Current Successful req/sec", currentSuccessful, "")
-	tbl.AddRow("Max Successful req/sec", tr.maxSeenSuccessfulRequestPerSec, "")
+	tbl.AddRow("# Requests", tr.numRequests, "", "")
+	tbl.AddRow("# Test Success", tr.numSuccess, "", "")
+	tbl.AddRow("# Test Failures", tr.numFailure, "")
+	tbl.AddRow("# Consistency Test Success", tr.numConsistency-tr.numFailedConsistency, "")
+	tbl.AddRow("# Consistency Test Failures", tr.numFailedConsistency, "")
+	tbl.AddRow("# 5XX Errors", tr.num500s, "")
+	tbl.AddRow("# Throttled", tr.numThrottled, "")
+	tbl.AddRow("# Current THROTTLE/sec", tr.numThrottledLastInterval, "")
+	tbl.AddRow("# Current GET/sec", tr.numGetLastInterval, "Avg Duration: ", tr.avgGetDurationLastInterval.Milliseconds())
+	tbl.AddRow("# Current PUT/sec", tr.numPutLastInterval, "Avg Duration: ", tr.avgPutDurationLastInterval.Milliseconds())
+	tbl.AddRow("# Current DELETE/sec", tr.numDeleteLastInterval, "Avg Duration: ", tr.avgDeleteDurationLastInterval.Milliseconds())
+	tbl.AddRow("# Current CONSISTENCY/sec", tr.numConsistencyLastInterval, "(4 requests per check)", tr.avgConsistencyDurationLastInterval.Milliseconds())
+	tbl.AddRow("Current req/sec", currentThroughput, "", "")
+	tbl.AddRow("Current Successful req/sec", currentSuccessful, "", "")
+	tbl.AddRow("Max Successful req/sec", tr.maxSeenSuccessfulRequestPerSec, "", "")
 	tbl.Print()
 
 	tr.lastPrintedNumFailure = tr.numFailure
@@ -171,8 +188,14 @@ func (ra *ResultAggregator) Run() {
 		var lastFiveIntervals, lastFiveIntervalsSuccess, lastFiveIntervalsGets,
 			lastFiveIntervalsPuts, lastFiveIntervalsDeletes, lastFiveIntervalsThrottles,
 			lastFiveIntervalsConsistency []int
+
+		var lastFiveIntervalsConsistencyDuration, lastFiveIntervalsGetDuration, lastFiveIntervalsPutDuration,
+			lastFiveIntervalsDeleteDuration []time.Duration
 		var totalSuccessLastInterval, totalGetLastInterval, totalPutLastInterval,
 			totalDeleteLastInterval, totalThrottlesLastInterval, totalConsistencyLastInterval int
+
+		var totalGetDurationLastInterval, totalPutDurationLastInterval, totalDeleteDurationLastInterval,
+			totalConsistencyDurationLastInterval time.Duration
 		lastUpdate := time.Now()
 
 		for {
@@ -185,12 +208,20 @@ func (ra *ResultAggregator) Run() {
 				lastFiveIntervalsDeletes = append(lastFiveIntervalsDeletes, ra.Results.numDelete-totalDeleteLastInterval)
 				lastFiveIntervalsThrottles = append(lastFiveIntervalsThrottles, ra.Results.numThrottled-totalThrottlesLastInterval)
 				lastFiveIntervalsConsistency = append(lastFiveIntervalsConsistency, ra.Results.numConsistency-totalConsistencyLastInterval)
+				lastFiveIntervalsGetDuration = append(lastFiveIntervalsGetDuration, getIntervalAvgDuration(ra.Results.totalGetDuration, totalGetDurationLastInterval, ra.Results.numGetLastInterval))
+				lastFiveIntervalsPutDuration = append(lastFiveIntervalsPutDuration, getIntervalAvgDuration(ra.Results.totalPutDuration, totalPutDurationLastInterval, ra.Results.numPutLastInterval))
+				lastFiveIntervalsDeleteDuration = append(lastFiveIntervalsDeleteDuration, getIntervalAvgDuration(ra.Results.totalDeleteDuration, totalDeleteDurationLastInterval, ra.Results.numDeleteLastInterval))
+				lastFiveIntervalsConsistencyDuration = append(lastFiveIntervalsConsistencyDuration, getIntervalAvgDuration(ra.Results.totalConsistencyDuration, totalConsistencyDurationLastInterval, ra.Results.numConsistencyLastInterval))
 				totalSuccessLastInterval = ra.Results.numSuccess
 				totalGetLastInterval = ra.Results.numGet
 				totalPutLastInterval = ra.Results.numPut
 				totalDeleteLastInterval = ra.Results.numDelete
 				totalThrottlesLastInterval = ra.Results.numThrottled
 				totalConsistencyLastInterval = ra.Results.numConsistency
+				totalGetDurationLastInterval = ra.Results.totalGetDuration
+				totalPutDurationLastInterval = ra.Results.totalPutDuration
+				totalDeleteDurationLastInterval = ra.Results.totalDeleteDuration
+				totalConsistencyDurationLastInterval = ra.Results.totalConsistencyDuration
 
 				if len(lastFiveIntervalsSuccess) > 4 {
 					lastFiveIntervalsSuccess = lastFiveIntervalsSuccess[1:]
@@ -200,6 +231,10 @@ func (ra *ResultAggregator) Run() {
 					lastFiveIntervalsDeletes = lastFiveIntervalsDeletes[1:]
 					lastFiveIntervalsThrottles = lastFiveIntervalsThrottles[1:]
 					lastFiveIntervalsConsistency = lastFiveIntervalsConsistency[1:]
+					lastFiveIntervalsGetDuration = lastFiveIntervalsGetDuration[1:]
+					lastFiveIntervalsPutDuration = lastFiveIntervalsPutDuration[1:]
+					lastFiveIntervalsDeleteDuration = lastFiveIntervalsDeleteDuration[1:]
+					lastFiveIntervalsConsistencyDuration = lastFiveIntervalsConsistencyDuration[1:]
 				}
 
 				ra.Results.resultLock.Lock()
@@ -211,6 +246,10 @@ func (ra *ResultAggregator) Run() {
 				ra.Results.numDeleteLastInterval = average(lastFiveIntervalsDeletes)
 				ra.Results.numThrottledLastInterval = average(lastFiveIntervalsThrottles)
 				ra.Results.numConsistencyLastInterval = average(lastFiveIntervalsConsistency)
+				ra.Results.avgGetDurationLastInterval = avgDuration(lastFiveIntervalsGetDuration)
+				ra.Results.avgPutDurationLastInterval = avgDuration(lastFiveIntervalsPutDuration)
+				ra.Results.avgDeleteDurationLastInterval = avgDuration(lastFiveIntervalsDeleteDuration)
+				ra.Results.avgConsistencyDurationLastInterval = avgDuration(lastFiveIntervalsConsistencyDuration)
 				ra.Results.intervalCount = 0
 				if ra.Results.numSuccessLastInterval > ra.Results.maxSeenSuccessfulRequestPerSec {
 					ra.Results.maxSeenSuccessfulRequestPerSec = ra.Results.numSuccessLastInterval
@@ -219,9 +258,6 @@ func (ra *ResultAggregator) Run() {
 
 				if ra.Results.numFailure > MaxFailuresBeforeExit {
 					close(ra.cfg.ShutdownChan)
-					//time.Sleep(time.Second * 2)
-					//// Give goroutines time to publish their results. All reqs have a 2s timeout.
-					//close(ra.cfg.ResultChan)
 					break
 				}
 
@@ -237,14 +273,19 @@ func (ra *ResultAggregator) Run() {
 		if (testResult.WasTestFailure() || testResult.Was404()) && keepRunning {
 			ra.cfg.FailureChan <- testResult
 		}
+
+		if testResult.WasSuccess() && keepRunning {
+			ra.cfg.SuccessChan <- testResult
+		}
 	}
 
 }
 
 func (ra *ResultAggregator) PrintScore() {
+	scoreModifier := time.Now().Sub(ra.Results.startTime).Minutes() // longer running = better.
+
 	consistencyRate := float64(1) - float64(ra.Results.numFailedConsistency)/float64(ra.Results.numConsistency)
 	successRate := float64(1) - float64(ra.Results.numFailure)/float64(ra.Results.numSuccess+ra.Results.numFailure)
-	scoreModifier := 2.2 // Helps separate lower scores by larger variances
 	fmt.Printf("Your consistency accuracy was %f percent", math.Round(consistencyRate*10000)/10000*100)
 	fmt.Println()
 	fmt.Printf("Your success rate was %f percent", math.Round(successRate*10000)/10000*100)
@@ -265,4 +306,23 @@ func average(items []int) int {
 	}
 
 	return sum / len(items)
+}
+
+func avgDuration(items []time.Duration) time.Duration {
+	var sum int64
+	for i := 0; i < len(items); i++ {
+		sum = sum + items[i].Nanoseconds()
+	}
+
+	return time.Duration(sum / int64(len(items)))
+}
+
+func getIntervalAvgDuration(totalDuration, totalDurationLastInterval time.Duration, totalRequestsOfTypeLastInterval int) time.Duration {
+	intervalDur := totalDuration - totalDurationLastInterval
+
+	if totalRequestsOfTypeLastInterval == 0 {
+		totalRequestsOfTypeLastInterval = 1
+	}
+
+	return time.Duration(intervalDur.Nanoseconds() / int64(totalRequestsOfTypeLastInterval))
 }

@@ -97,7 +97,6 @@ func (fs *FileServer) HandleGet(response http.ResponseWriter, request *http.Requ
 		defer fs.fileLock.RUnlock()
 	}
 
-	fs.inProcess.Add(filePath)
 	// Read file from FS
 	file, err := os.Open(filePath)
 	defer file.Close()
