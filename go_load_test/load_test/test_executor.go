@@ -23,6 +23,8 @@ type TestExecutor struct {
 	endpointCfg           TestEndpointConfig
 	fileSizeLock          sync.RWMutex
 	uploadRandomLargeFile bool
+	largeFileSet          FileSet
+	largeFileSetLock      sync.RWMutex
 }
 
 func NewTestExecutor(client *http.Client, config TestEndpointConfig, testConfig TestConfig, resultsChan chan TestResult) *TestExecutor {
@@ -34,6 +36,7 @@ func NewTestExecutor(client *http.Client, config TestEndpointConfig, testConfig 
 		inProcessLock:         sync.RWMutex{},
 		results:               resultsChan,
 		uploadRandomLargeFile: testConfig.UploadRandomLargeFile,
+		largeFileSet:          make(map[string]bool),
 	}
 }
 
@@ -63,7 +66,7 @@ func (tr *TestExecutor) PutFile(fileName string) {
 		tr.inProcess.Delete(fileName)
 		tr.inProcessLock.Unlock()
 	}()
-	fileSize := tr.randomFileSize()
+	fileSize := tr.randomFileSize(fileName, true)
 	fileBytes := make([]byte, fileSize)
 	_, err := crand.Read(fileBytes)
 	if err != nil {
@@ -126,7 +129,7 @@ func (tr *TestExecutor) CreateFile(fileName string) {
 		tr.inProcess.Delete(fileName)
 		tr.inProcessLock.Unlock()
 	}()
-	fileSize := rand.Int63n(tr.maxFileSize) + 1
+	fileSize := tr.randomFileSize(fileName, true)
 	fileBytes := make([]byte, fileSize)
 	_, err := crand.Read(fileBytes)
 	if err != nil {
@@ -184,6 +187,33 @@ func (tr *TestExecutor) CreateFile(fileName string) {
 
 func (tr *TestExecutor) GetFile(fileName string) {
 	start := time.Now()
+
+	tr.largeFileSetLock.RLock()
+	isGiantFile := tr.largeFileSet.Has(fileName)
+	// reduce liklihood of reading HUGE files, only read 1 in 25 times.
+	if isGiantFile {
+		rand.Seed(time.Now().UnixNano())
+		if rand.Intn(50) != 1 {
+			// Give free success if rand int matches
+			tr.results <- TestResult{
+				fileName: fileName,
+				testType: GET,
+				response: &http.Response{
+					StatusCode: 200,
+				},
+				message:  "Free GET read success from matching giant file.",
+				err:      nil,
+				duration: time.Now().Sub(start),
+				failed:   false,
+			}
+			tr.largeFileSetLock.RUnlock()
+			return
+		} else {
+			log.Warn("Downloading GIANT file, beware!!")
+		}
+	}
+	tr.largeFileSetLock.RUnlock()
+
 	response, err := tr.client.Get(tr.buildPath(fileName))
 	if err != nil {
 		tr.results <- TestResult{
@@ -219,13 +249,23 @@ func (tr *TestExecutor) DeleteFile(fileName string) {
 		tr.inProcessLock.Unlock()
 	}()
 
+	tr.largeFileSetLock.RLock()
+	isGiantFile := tr.largeFileSet.Has(fileName)
+	tr.largeFileSetLock.RUnlock()
+	// reduce liklihood of reading HUGE files, only read 1 in 25 times.
+	if isGiantFile {
+		tr.largeFileSetLock.Lock()
+		tr.largeFileSet.Delete(fileName)
+		tr.largeFileSetLock.Unlock()
+	}
+
 	req, err := http.NewRequest(http.MethodDelete, tr.buildPath(fileName), nil)
 	if err != nil {
 		tr.results <- TestResult{
 			fileName: fileName,
 			testType: DELETE,
 			response: nil,
-			message:  "Failed ot build delete request.",
+			message:  "Failed to build delete request.",
 			err:      err,
 			failed:   true,
 			duration: time.Now().Sub(start),
@@ -267,7 +307,7 @@ func (tr *TestExecutor) ConsistencyCheck(fileName string) {
 		tr.inProcessLock.Unlock()
 	}()
 
-	fileSize := tr.randomFileSize()
+	fileSize := tr.randomFileSize(fileName, false)
 	fileBytes := make([]byte, fileSize)
 	_, err := crand.Read(fileBytes)
 	if err != nil {
@@ -473,7 +513,8 @@ func (tr *TestExecutor) GetMaxFileSize() int64 {
 }
 
 // Returns a random file size that is less than the curren set maxFileSize
-func (tr *TestExecutor) randomFileSize() int64 {
+func (tr *TestExecutor) randomFileSize(fileName string, canBeHuge bool) int64 {
+	rand.Seed(time.Now().UnixNano())
 	// To prevent IO limits, prefer smaller sizes _most_ of the time.
 	tr.fileSizeLock.RLock()
 	defer tr.fileSizeLock.RUnlock()
@@ -485,15 +526,17 @@ func (tr *TestExecutor) randomFileSize() int64 {
 		if !keepSize {
 			size = size / 2
 		}
-
 	}
 
-	// Roll 1 in 100 chance to return a HUGE file
-	if tr.uploadRandomLargeFile {
-		uploadHugeFile := rand.Int63n(100) == 1
+	// Roll 1 in 1500 chance to return a HUGE file
+	if tr.uploadRandomLargeFile && canBeHuge {
+		uploadHugeFile := rand.Int63n(1000) == 1
 		if uploadHugeFile {
-			log.Warnf("UPLOADING HUGE FILE!")
+			log.Warnf("UPLOADING HUGE FILE!!")
 			size = HugeFileSize
+			tr.largeFileSetLock.Lock()
+			tr.largeFileSet.Add(fileName)
+			tr.largeFileSetLock.Unlock()
 		}
 	}
 

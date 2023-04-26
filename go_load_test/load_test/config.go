@@ -2,7 +2,7 @@ package load_test
 
 const (
 	MaxFailuresBeforeExit       = 1000
-	HugeFileSize          int64 = 150000000
+	HugeFileSize          int64 = 750000000
 )
 
 type TestEndpointConfig struct {

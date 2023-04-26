@@ -137,7 +137,7 @@ func (ts *TestScheduler) ScheduleTests() {
 		// also removes a flat 50 microseconds to account for time for this calculation and provide a buffer
 		seedsLeft := seedCount - ts.numScheduled
 		if seedsLeft > 0 {
-			time.Sleep((remainingTime / time.Duration(seedsLeft)) - scheduleDur - time.Microsecond*50)
+			time.Sleep((remainingTime / time.Duration(seedsLeft)) - scheduleDur - time.Microsecond*15)
 		}
 	}
 
