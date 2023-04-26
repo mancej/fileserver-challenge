@@ -43,6 +43,7 @@ func main() {
 	enableRequestRamp, _ := strconv.ParseBool(load_test.GetEnv("ENABLE_REQUEST_RAMP", "true"))
 	enableFileRamp, _ := strconv.ParseBool(load_test.GetEnv("ENABLE_FILE_RAMP", "true"))
 	uploadRandomLargeFile, _ := strconv.ParseBool(load_test.GetEnv("RANDOMLY_UPLOAD_LARGE_FILES", "true"))
+	maxWritesPerCadence, _ := strconv.Atoi(load_test.GetEnv("MAX_WRITES_PER_CADENCE", "100"))
 
 	cfg := load_test.TestSchedulerConfig{
 		EndpointCfg: load_test.TestEndpointConfig{
@@ -62,6 +63,7 @@ func main() {
 			MaxFileCount:          maxFileCount,
 			FileSizeRamp:          enableFileRamp,
 			UploadRandomLargeFile: uploadRandomLargeFile,
+			MaxWritesPerCadence:   maxWritesPerCadence,
 		},
 		SchedulerChan: make(chan load_test.Test, 50000),       // Tests scheduled to run asap are sent here
 		ResultChan:    make(chan load_test.TestResult, 15000), // Results of tests are sent here

@@ -488,7 +488,7 @@ func (tr *TestExecutor) randomFileSize() int64 {
 
 	}
 
-	// Roll 1 in 1000 chance to return a HUGE file
+	// Roll 1 in 100 chance to return a HUGE file
 	if tr.uploadRandomLargeFile {
 		uploadHugeFile := rand.Int63n(100) == 1
 		if uploadHugeFile {

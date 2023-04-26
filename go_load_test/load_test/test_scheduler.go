@@ -34,6 +34,7 @@ type TestConfig struct {
 	MaxFileCount          int
 	FileSizeRamp          bool
 	UploadRandomLargeFile bool
+	MaxWritesPerCadence   int
 }
 
 type TestSchedulerConfig struct {
@@ -111,12 +112,24 @@ func (ts *TestScheduler) ScheduleTests() {
 	targetSeed := ts.cfg.SeedCadence.TestsPerDuration + int(float64(ts.growthFactor)*float64(ts.cfg.SeedGrowthAmount)) + ts.rampAmount
 	seedCount := targetSeed // num in this seed that need to be scheduled.
 	startTime := time.Now()
+	numWrites := 0
 
 	for ts.numScheduled < seedCount {
 		scheduleStart := time.Now()
-		ts.cfg.SchedulerChan <- ts.GetTestFunc()
+		test := ts.GetTestFunc()
+		ts.cfg.SchedulerChan <- test
 		ts.numScheduled++
 		ts.totalScheduled++
+
+		// If writes exceed
+		if test.TestType == CREATE || test.TestType == PUT {
+			numWrites++
+		}
+
+		if numWrites > ts.cfg.TestConfig.MaxWritesPerCadence {
+			test.TestType = GET
+		}
+
 		remainingTime := ts.cfg.SeedCadence.Duration - time.Now().Sub(startTime) // remaining time before reset
 
 		// Calculates time it takes to schedule a job.
