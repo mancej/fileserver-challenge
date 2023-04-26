@@ -117,7 +117,6 @@ func (ts *TestScheduler) ScheduleTests() {
 	for ts.numScheduled < seedCount {
 		scheduleStart := time.Now()
 		test := ts.GetTestFunc()
-		ts.cfg.SchedulerChan <- test
 		ts.numScheduled++
 		ts.totalScheduled++
 
@@ -126,9 +125,12 @@ func (ts *TestScheduler) ScheduleTests() {
 			numWrites++
 		}
 
-		if numWrites > ts.cfg.TestConfig.MaxWritesPerCadence {
+		if numWrites > ts.cfg.TestConfig.MaxWritesPerCadence && (test.TestType == CREATE || test.TestType == PUT) {
+			log.Warn("CONVERTING TEST TO GET")
 			test.TestType = GET
 		}
+
+		ts.cfg.SchedulerChan <- test
 
 		remainingTime := ts.cfg.SeedCadence.Duration - time.Now().Sub(startTime) // remaining time before reset
 
