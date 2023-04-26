@@ -116,18 +116,13 @@ func (ts *TestScheduler) ScheduleTests() {
 
 	for ts.numScheduled < seedCount {
 		scheduleStart := time.Now()
-		test := ts.GetTestFunc()
+		test := ts.GetTestFunc(numWrites < ts.cfg.TestConfig.MaxWritesPerCadence)
 		ts.numScheduled++
 		ts.totalScheduled++
 
 		// If writes exceed
 		if test.TestType == CREATE || test.TestType == PUT {
 			numWrites++
-		}
-
-		if numWrites > ts.cfg.TestConfig.MaxWritesPerCadence && (test.TestType == CREATE || test.TestType == PUT) {
-			log.Warn("CONVERTING TEST TO GET")
-			test.TestType = GET
 		}
 
 		ts.cfg.SchedulerChan <- test
@@ -171,9 +166,10 @@ func (ts *TestScheduler) ScheduleTests() {
 // TrackedFiles assumes all reads/writes/deletes were success. It doesn't add file back if delete was failure, etc.
 
 // GetTestFunc selects a psuedo random test function to run
-func (ts *TestScheduler) GetTestFunc() Test {
+// If canBeWrite is false, then only a DELETE or GET will be scheduled.
+func (ts *TestScheduler) GetTestFunc(canBeWrite bool) Test {
 	//rand.Seed(time.Now().UnixNano())
-	createNewFile := rand.Intn(ts.cfg.TestConfig.MaxFileCount) > len(ts.trackedFiles)
+	createNewFile := canBeWrite && rand.Intn(ts.cfg.TestConfig.MaxFileCount) > len(ts.trackedFiles)
 	var testToRun = Test{}
 
 	if createNewFile {
@@ -202,6 +198,10 @@ func (ts *TestScheduler) GetTestFunc() Test {
 			ts.trackedFileLock.Lock()
 			ts.trackedFiles.Delete(testToRun.fileName)
 			ts.trackedFileLock.Unlock()
+		}
+
+		if !canBeWrite && testToRun.TestType == PUT {
+			testToRun.TestType = GET
 		}
 	}
 
