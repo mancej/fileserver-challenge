@@ -10,7 +10,7 @@ export SEED_GROWTH_AMOUNT=1                    # Every second, this many more re
 export ENABLE_REQUEST_RAMP=true                # If true, every 1 minute, your seed growth rate doubles
 export ENABLE_FILE_RAMP=true                   # If true, every 15 seconds the max possible file size written increases by 50%
 export RANDOMLY_UPLOAD_LARGE_FILES=true        # If true, 1 out of every 100 files uploaded will be > 100MB in size
-export MAX_FILE_COUNT=10000                    # Recommend 2-5x total REQUESTS_PER_SECOND (consider seed in this calculation)
-export MAX_FILE_SIZE=512                       # 1KB, but could be set to ANYTHING in live tests
+export MAX_FILE_COUNT=7500                     # Recommend 2-5x total REQUESTS_PER_SECOND (consider seed in this calculation)
+export MAX_FILE_SIZE=2048                      # 1KB, but could be set to ANYTHING in live tests
 
 go run $SCRIPTPATH/../cmd/main.go

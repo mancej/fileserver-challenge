@@ -1,3 +1,3 @@
 #!/bin/zsh
 
-curl -v -X PUT http://localhost:8080/api/fileserver/huge-file --data @/tmp/hugefile
+curl http://localhost:8080/api/fileserver/huge-file --upload-file /tmp/hugefile

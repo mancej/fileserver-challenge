@@ -31,7 +31,7 @@ func (tr *TestRunner) Run() {
 			MaxIdleConns:    45000,
 			MaxConnsPerHost: 0,
 		},
-		Timeout: time.Second * 20,
+		Timeout: time.Second * 30,
 	}
 	exec := NewTestExecutor(client, tr.cfg.EndpointCfg, tr.cfg.TestConfig, tr.cfg.ResultChan)
 
